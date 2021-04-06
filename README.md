@@ -63,6 +63,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 3. This new eval_predicate function allows the user defined rule expression to have operational verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
 
 4. This new eval_predicate function supports the following operations inside the rule.
+
    a. It supports these relational operations: ==, !=, <, <=, >, >=
 
    b. It supports these logical operations: ||, &&
@@ -85,17 +86,19 @@ This toolkit came into existence for a specific need with which a large enterpri
 
    d. Zero parenthesis is used in this example rule:
    
-"a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3"
+   "a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3"
 
    e. Single level parenthesis is used within each subexpression in this example rule:
    
-"(a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)"
+   "(a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)"
 
    f. Support for nested expressions as shown in the examples below will become available in future releases.
    
-"(a == 'hi') && ((b contains 'xyz' || g[4] > 6.7) && id % 8 == 3)"
-"(a == 'hi') && (b contains 'xyz' && (g[4] > 6.7 || id % 8 == 3))"
-"(a == 'hi') && ((b contains 'xyz') || (g[4] > 6.7) || (id % 8 == 3))"
+   "(a == 'hi') && ((b contains 'xyz' || g[4] > 6.7) && id % 8 == 3)"
+   
+   "(a == 'hi') && (b contains 'xyz' && (g[4] > 6.7 || id % 8 == 3))"
+   
+   "(a == 'hi') && ((b contains 'xyz') || (g[4] > 6.7) || (id % 8 == 3))"
 
 ## Source code
 The complete C++ logic for the **eval_predicate** function is available in the *impl/include/eval_predicate.h* file of this repository.
