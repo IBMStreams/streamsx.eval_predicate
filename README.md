@@ -76,6 +76,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 5. It allows a rule expression that can refer to boolean, integer, float, string, set, list, map and other nested tuple attributes.
 
 6. It allows certain level of subexpression chaining in a rule.
+
    a. Currently, it supports either zero or single level of parenthesis in a rule.
 
    b. There is no support for nested parenthesis right now. It will be available in a future release.
@@ -83,12 +84,15 @@ This toolkit came into existence for a specific need with which a large enterpri
    c. Within a given subexpression, one must use the same logical operators.
 
    d. Zero parenthesis is used in this example rule:
+   
 "a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3"
 
    e. Single level parenthesis is used within each subexpression in this example rule:
+   
 "(a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)"
 
    f. Support for nested expressions as shown in the examples below will become available in future releases.
+   
 "(a == 'hi') && ((b contains 'xyz' || g[4] > 6.7) && id % 8 == 3)"
 "(a == 'hi') && (b contains 'xyz' && (g[4] > 6.7 || id % 8 == 3))"
 "(a == 'hi') && ((b contains 'xyz') || (g[4] > 6.7) || (id % 8 == 3))"
