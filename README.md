@@ -79,27 +79,35 @@ This toolkit came into existence for a specific need with which a large enterpri
 
 6. It allows certain level of subexpression chaining in a rule.
 
-   a. Currently, it supports either zero or single level of parenthesis in a rule.
+   a. It supports zero or single or multilevel parenthesis in a given rule.
 
-   b. There is no support for nested parenthesis right now. It will be available in a future release.
+   b. Via multilevel parenthesis, it allows for evaluating nested rules.
 
    c. Within a given subexpression, one must use the same logical operators.
 
    d. Zero parenthesis is used in this example rule:
    
-   "a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3"
+   a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3
 
-   e. Single level parenthesis is used within each subexpression in this example rule:
+   e. Single level parenthesis is used within each subexpression in the following example rules:
    
-   "(a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)"
+   (a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)
 
-   f. Support for nested expressions as shown in the examples below will become available in future releases.
+   (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+
+   f. Multilevel parenthesis is used in the following example rules that are nested:
    
-   "(a == 'hi') && ((b contains 'xyz' || g[4] > 6.7) && id % 8 == 3)"
-   
-   "(a == 'hi') && (b contains 'xyz' && (g[4] > 6.7 || id % 8 == 3))"
-   
-   "(a == 'hi') && ((b contains 'xyz') || (g[4] > 6.7) || (id % 8 == 3))"
+   (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
+
+   (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
+
+   (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+
+   (a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+
+   ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
+
+   (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 
 ## Source code
 The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](impl/include/eval_predicate.h) file of this repository.

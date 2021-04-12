@@ -7,7 +7,7 @@
 /*
 ============================================================
 This file contains C++ native function(s) provided in the
-eval_predicate toolkit. It has very eloborate logic to
+eval_predicate toolkit. It has very elaborate logic to
 evaluate a user given expression a.k.a user defined rule.
 It differs from the IBM Streams built-in function
 evalPredicate in the following ways.
@@ -52,20 +52,23 @@ Following are three tuple examples with varying degree of complexity.
 3) tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 
 Following are the examples of expressions that can be sent for evaluation.
-We only support either zero or single level of parenthesis combination.
-Nested parenthesis is not supported at this time. Within a given
-subexpression, you must use the same logical operators.
+We support either zero or single level or multilevel (nested) parenthesis combination.
+Within a given subexpression, you must use the same logical operators.
 
 Zero parenthesis is used in this expression:
 a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
 
 Single level parenthesis is used within each subexpression:
 (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
+(a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
 
-Following expressions use nested parenthesis which we don't support at this time.
+Following expressions use nested parenthesis.
 (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
 (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
 (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+(a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
+(((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 
 Note
 ----
@@ -81,13 +84,13 @@ lines of comment free complex C++ logic proved to be a tall order for me.
 So, I took a fresh approach to write this new eval_predicate function
 with my own ideas along with sufficient commentary to explain the logic.
 That obviously led to implementation and feature differences between
-the preexisting built-in evalPredicate and my new eval_predicate in this file.
+the built-in evalPredicate and my new eval_predicate in this file.
 
 This toolkit's GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
 
 First created on: Mar/05/2021
-Last modified on: Apr/05/2021
+Last modified on: Apr/12/2021
 ============================================================
 */
 #ifndef FUNCTIONS_H_
@@ -224,6 +227,7 @@ Last modified on: Apr/05/2021
 #define KEY_NOT_FOUND_IN_SUB_EXP_MAP_DURING_EVAL 112
 #define EMPTY_SUB_EXP_LAYOUT_LIST_DURING_EVAL 113
 #define LHS_ATTRIB_NAME_STOPS_ABRUPTLY_AT_THE_END_OF_THE_EXPRESSION 114
+#define MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS 115
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -260,6 +264,10 @@ namespace eval_predicate_functions {
 				return(subexpressionsMapKeys);
 			}
 
+			SPL::map<rstring, rstring> const & getIntraNestedSubexpressionLogicalOperatorsMap() {
+				return(intraNestedSubexpressionLogicalOperatorsMap);
+			}
+
 			SPL::list<rstring> const & getInterSubexpressionLogicalOperatorsList() {
 				return(interSubexpressionLogicalOperatorsList);
 			}
@@ -281,6 +289,10 @@ namespace eval_predicate_functions {
 				subexpressionsMapKeys = mapKeys;
 			}
 
+			void setIntraNestedSubexpressionLogicalOperatorsMap(SPL::map<rstring, rstring> const & myMap) {
+				intraNestedSubexpressionLogicalOperatorsMap = myMap;
+			}
+
 			void setInterSubexpressionLogicalOperatorsList(SPL::list<rstring> const & opsList) {
 				interSubexpressionLogicalOperatorsList = opsList;
 			}
@@ -291,6 +303,7 @@ namespace eval_predicate_functions {
 			rstring tupleSchema;
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
 			SPL::list<rstring> subexpressionsMapKeys;
+			SPL::map<rstring, rstring> intraNestedSubexpressionLogicalOperatorsMap;
 			SPL::list<rstring> interSubexpressionLogicalOperatorsList;
 	};
 
@@ -302,7 +315,7 @@ namespace eval_predicate_functions {
     // what we assume is a common use.
     typedef std::tr1::unordered_map<SPL::rstring, ExpressionEvaluationPlan*> ExpEvalCache;
     // This will give us a TLS (Thread Local Storage) for this pointer based
-    // data stricture to be available all the time within a PE's thread. A PE can
+    // data structure to be available all the time within a PE's thread. A PE can
     // contain a single operator or multiple operators in case of operator fusion.
     // So, this static (global) variable is only applicable within a given thread that
     // is accessible either by one or more operators.
@@ -336,6 +349,7 @@ namespace eval_predicate_functions {
     boolean validateExpression(rstring const & expr,
     	SPL::map<rstring, rstring> const & tupleAttributesMap,
 		SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
+		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
 		SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
 		int32 & error, boolean trace);
     // Evaluate the expression according to the predefined plan.
@@ -381,7 +395,25 @@ namespace eval_predicate_functions {
 	void performPostArithmeticEvalOperations(T1 const & arithmeticResult,
 		T1 const & rhsValue, rstring const & postArithmeticOperationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
-
+	// Create the next subexpression id.
+	void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
+		rstring & subexpressionId);
+	// Check if the next non-space character is an open parenthesis.
+	boolean isNextNonSpaceCharacterOpenParenthesis(blob const & myBlob,
+		int32 const & idx, int32 const & stringLength);
+	// Find if the current single subexpression is enclosed within a parenthesis.
+	boolean isThisAnEnclosedSingleSubexpression(rstring const & expr,
+		int32 const & idx);
+	// Check if the next non-space character is a close parenthesis.
+	boolean isNextNonSpaceCharacterCloseParenthesis(blob const & myBlob,
+		int32 const & idx, int32 const & stringLength);
+	// This function gets the relevant details about the
+	// nested subexpression group.
+	void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
+		SPL::list<rstring> const & subexpressionIdsList,
+		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
+		int32 & subexpressionCntInCurrentNestedGroup,
+		rstring & intraNestedSubexpressionLogicalOperator);
     // ====================================================================
 	// Evaluate a given expression.
     // Example expressions:
@@ -412,9 +444,9 @@ namespace eval_predicate_functions {
 		// Example of myTuple's schema:
 		// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 		//
-    	SPLAPPTRC(L_TRACE, "Begin1", "TupleSchemaConstructor");
+    	SPLAPPTRC(L_TRACE, "Begin timing measurement 1", "TupleSchemaConstructor");
     	rstring myTupleSchema = getSPLTypeName(myTuple, trace);
-    	SPLAPPTRC(L_TRACE, "End1", "TupleSchemaConstructor");
+    	SPLAPPTRC(L_TRACE, "End timing measurement 1", "TupleSchemaConstructor");
 
     	if(myTupleSchema == "") {
     		// This should never occur. If it happens in
@@ -446,6 +478,7 @@ namespace eval_predicate_functions {
 	    	if(it->second->getTupleSchema() != myTupleSchema) {
 	    		if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 2b ====" << endl;
+					cout << "Full expression=" << expr << endl;
 					cout << "Tuple schema mismatch found inside the expression evaluation plan cache." << endl;
 					cout << "Tuple schema stored in the cache=" <<
 						it->second->getTupleSchema() << endl;
@@ -460,6 +493,7 @@ namespace eval_predicate_functions {
 	    	} else {
 	    		if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 3b ====" << endl;
+					cout << "Full expression=" << expr << endl;
 					cout << "Matching tuple schema is found inside the expression evaluation plan cache." << endl;
 					cout << "Total number of expressions in the cache=" <<
 						expEvalCache->size() << endl;
@@ -471,6 +505,7 @@ namespace eval_predicate_functions {
 	    } else {
     		if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 2a ====" << endl;
+				cout << "Full expression=" << expr << endl;
 				cout << "Expression is not found inside the evaluation plan cache." << endl;
 				cout << "Starting the preparation for adding it to the eval plan cache." << endl;
 				cout << "Total number of expressions in the cache=" <<
@@ -482,10 +517,10 @@ namespace eval_predicate_functions {
 	    	// preparation necessary for adding it to the eval plan cache.
 			// Let us parse the individual attributes of the given tuple and store them in a map.
 			SPL::map<rstring, rstring> tupleAttributesMap;
-			SPLAPPTRC(L_TRACE, "Begin2", "TupleAttributeParser");
+			SPLAPPTRC(L_TRACE, "Begin timing measurement 2", "TupleAttributeParser");
 			result = parseTupleAttributes(myTupleSchema,
 				tupleAttributesMap, error, trace);
-			SPLAPPTRC(L_TRACE, "End2", "TupleAttributeParser");
+			SPLAPPTRC(L_TRACE, "End timing measurement 2", "TupleAttributeParser");
 
 			if(result == false) {
 				return(false);
@@ -496,13 +531,12 @@ namespace eval_predicate_functions {
 			traceTupleAtttributeNamesAndValues(myTuple, tupleAttributesMap, trace);
 
 			// Note: The space below between > > is a must. Otherwise, compiler will give an error.
-			// This map's key is a subexpression sequence id.
-			// Subexpression sequence id will go something like this:
+			// This map's key is a subexpression id.
+			// Subexpression id will go something like this:
 			// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
-			// Sequence id is made of a parent subexpression id and a child subexpression id.
-			// In the example above, parent subexpression 2 has 4 children.
-			// At this time, we only support either zero parenthesis or a single
-			// level of parenthesis. There is no support for nested parenthesis.
+			// Subexpression id is made of level 1 and level2.
+			// We support either zero parenthesis or a single level or
+			// multilevel (nested) parenthesis.
 			// Logical operators used within a subexpression must be of the same kind.
 			//
 			// A few examples of zero, single and nested parenthesis.
@@ -513,17 +547,26 @@ namespace eval_predicate_functions {
 			// 1.1                               2.1
 			// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
 			//
-			// 1.1                 2.1.1            2.1.2           2.2
+			// 1.1                2.1                   3.1             4.1
+			// (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+			//
+			// 1.1                          2.1                       2.2
 			// (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
 			//
-			// 1.1                               2.1
-			// a == "hi" && (b contains "xyz" || (g[4] > 6.7) || id % 8 == 3)
-			//
-			// 1.1                 2.1               2.2.1           2.2.2
+			// 1.1                 2.1                       2.2
 			// (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
 			//
-			// 1.1                 2.1.1                2.1.2           2.2
+			// 1.1                                 2.1
 			// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+			//
+			// 1.1                     2.1                 2.2
+			// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+			//
+			// 1.1                                        1.2                           2.1
+			// ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
+			//
+			// 1.1                                                                   1.2                          1.3
+			// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 			//
 			// This map's value is a list that describes the composition of a given subexpression.
 			// Structure of such a list will go something like this:
@@ -537,6 +580,11 @@ namespace eval_predicate_functions {
 			// ...   - The sequence above repeats for this subexpression.
 			//
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
+			// Store the logical operators within the nested sub-expressions.
+			// Key for this map will be id of the nested subexpression that
+			// is preceding the logical operator. Value will be the logical
+			// operator.
+			SPL::map<rstring, rstring> intraNestedSubexpressionLogicalOperatorsMap;
 			// Store the logical operators between different sub-expressions.
 			// This list will have N-1 items where N is the total number of
 			// subexpressions stored in the map above.
@@ -548,12 +596,13 @@ namespace eval_predicate_functions {
 			// get back a reusable map structure of how the expression is made,
 			// how it is tied to the tuple attributes and what operations
 			// need to be performed later while evaluating the expression.
-			SPLAPPTRC(L_TRACE, "Begin3", "ExpressionValidator");
+			SPLAPPTRC(L_TRACE, "Begin timing measurement 3", "ExpressionValidator");
 			result = validateExpression(expr, tupleAttributesMap,
 				subexpressionsMap,
+				intraNestedSubexpressionLogicalOperatorsMap,
 				interSubexpressionLogicalOperatorsList,
 				error, trace);
-			SPLAPPTRC(L_TRACE, "End3", "ExpressionValidator");
+			SPLAPPTRC(L_TRACE, "End timing measurement 3", "ExpressionValidator");
 
 			if(result == false) {
 				return(false);
@@ -579,12 +628,15 @@ namespace eval_predicate_functions {
 				return(false);
 			}
 
-			// Let us take a copy of it in our eval plan cache for
+			// Let us take a copy of various data structures related to this
+			// fully validated expression in our eval plan cache for
 			// prolonged use by calling the setter methods of the cache object.
 			evalPlanPtr->setExpression(expr);
 			evalPlanPtr->setTupleSchema(myTupleSchema);
 			evalPlanPtr->setSubexpressionsMap(subexpressionsMap);
 			evalPlanPtr->setSubexpressionsMapKeys(subexpressionsMapKeys);
+			evalPlanPtr->setIntraNestedSubexpressionLogicalOperatorsMap(
+				intraNestedSubexpressionLogicalOperatorsMap);
 			evalPlanPtr->setInterSubexpressionLogicalOperatorsList(
 				interSubexpressionLogicalOperatorsList);
 
@@ -599,6 +651,7 @@ namespace eval_predicate_functions {
 
     		if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 11a ====" << endl;
+				cout << "Full expression=" << expr << endl;
 				cout << "Inserted the expression in the eval plan cache." << endl;
 				cout << "Total number of expressions in the cache=" <<
 					expEvalCache->size() << endl;
@@ -610,9 +663,10 @@ namespace eval_predicate_functions {
 
 	    // We have a valid iterator from the eval plan cache for the given expression.
 	    // We can go ahead execute the evaluation plan now.
-	    SPLAPPTRC(L_TRACE, "Begin4", "ExpressionEvaluation");
+	    SPLAPPTRC(L_TRACE, "Begin timing measurement 4", "ExpressionEvaluation");
 	    result = evaluateExpression(it->second, myTuple, error, trace);
-	    SPLAPPTRC(L_TRACE, "End4", "ExpressionEvaluation");
+	    SPLAPPTRC(L_TRACE, "End timing measurement 4", "ExpressionEvaluation");
+
     	return(result);
     } // End of eval_predicate
     // ====================================================================
@@ -1127,7 +1181,7 @@ namespace eval_predicate_functions {
     		// runtime problems that happen in mapping a given attribute type to ConstValueHandle.
     		// In such problems, it is possible that a careless coding mistake in this function that
     		// tries to assign a wrong data type to a ConstValueHandle on the RHS.
-    		// Following console print will reveal the attribue name and the attribute type.
+    		// Following console print will reveal the attribute name and the attribute type.
     		// Then, search for that attribute type in the code below to confirm that the
     		// assignment to ConstValueHandle is done for the correct data type.
     		cout << "YYYYY1=" << attribList[i] << ", YYYYY2=" <<
@@ -1600,12 +1654,13 @@ namespace eval_predicate_functions {
     boolean validateExpression(rstring const & expr,
         SPL::map<rstring, rstring> const & tupleAttributesMap,
     	SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
+		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
     	SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
     	int32 & error, boolean trace=false) {
     	error = ALL_CLEAR;
 
     	// This function will do its work and keep populating the
-    	// subexpressions layout map and inter subexpression logical
+    	// subexpressions layout map and the inter subexpression logical
     	// operator list which were passed as input reference arguments.
     	//
     	// Get a blob representation of the expression.
@@ -1673,9 +1728,9 @@ namespace eval_predicate_functions {
 
     	// At this time, we can validate all the left hand side references to the
     	// tuple attributes, right hand side value comparisons, logical operators etc.
-    	// We only support these relational operations: ==, !=, <, <=, >, >=
-    	// We only support these logical operations: ||, &&
-    	// We only support these arithmetic operations: +, -, *, /, %
+    	// We support these relational operations: ==, !=, <, <=, >, >=
+    	// We support these logical operations: ||, &&
+    	// We support these arithmetic operations: +, -, *, /, %
     	// Special operations:
     	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
     	// No bitwise operations are supported at this time.
@@ -1690,9 +1745,9 @@ namespace eval_predicate_functions {
     	SPL::list<rstring> logicalOperationsList =
     		Functions::String::csvTokenize(logicalOperations);
 
-    	int idx = 0;
-    	int openParenthesisCnt = 0;
-    	int closeParenthesisCnt = 0;
+    	int32 idx = 0;
+    	int32 openParenthesisCnt = 0;
+    	int32 closeParenthesisCnt = 0;
     	boolean lhsFound = false;
     	boolean lhsSubscriptForListAndMapAdded = false;
     	boolean operationVerbFound = false;
@@ -1708,35 +1763,43 @@ namespace eval_predicate_functions {
     	// subexpressions we find. That map is an important one which
     	// acts as a structure describing the composition of the
     	// entire expression. Its structure is as explained here.
-    	// This map's key is a subexpression sequence id.
-    	// Subexpression sequence id will go something like this:
+    	// This map's key is a subexpression id.
+    	// Subexpression id will go something like this:
     	// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
-    	// Sequence id is made of a parent subexpression id and a child subexpression id.
-    	// In the example above, parent subexpression 2 has 4 children.
-    	// At this time, we only support either zero parenthesis or a single
-    	// level of parenthesis. There is no support for nested parenthesis.
+    	// Subexpression id is made of level 1 and level 2.
+		// We support either zero parenthesis or a single level or
+		// multilevel (nested) parenthesis.
     	// Logical operators used within a subexpression must be of the same kind.
+		//
+		// A few examples of zero, single and nested parenthesis.
+		//
+		// 1.1             2.1                 3.1           4.1
+		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
+		//
+		// 1.1                               2.1
+		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
+		//
+		// 1.1                2.1                   3.1             4.1
+		// (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+		//
+		// 1.1                          2.1                       2.2
+		// (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
+		//
+		// 1.1                 2.1                       2.2
+		// (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
+		//
+		// 1.1                                 2.1
+		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+		//
+		// 1.1                     2.1                 2.2
+		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+		//
+    	// 1.1                                        1.2                           2.1
+		// ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
     	//
-    	// A few examples of zero, single and nested parenthesis.
-    	//
-    	// 1.1             2.1                 3.1           4.1
-    	// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
-    	//
-    	// 1.1                               2.1
-    	// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
-    	//
-    	// 1.1                 2.1.1            2.1.2           2.2
-    	// (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
-    	//
-    	// 1.1                               2.1
-		// a == "hi" && (b contains "xyz" || (g[4] > 6.7) || id % 8 == 3)
-    	//
-    	// 1.1                 2.1               2.2.1           2.2.2
-    	// (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
-    	//
-    	// 1.1                 2.1.1                2.1.2           2.2
-    	// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
-    	//
+    	// 1.1                                                                   1.2                          1.3
+    	// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
+		//
     	// This map's value holds a list that describes the composition of a
     	// given subexpression. Structure of such a list will go something like this:
     	// This list will have a sequence of rstring items as shown below.
@@ -1751,9 +1814,95 @@ namespace eval_predicate_functions {
     	// So, we need the following list variable to store the layout of every subexpression.
     	//
     	SPL::list<rstring> subexpressionLayoutList;
-    	// We need these two variables to keep the subexpression parent and child ids.
-    	int32 parentSubexpressionId = 1;
-    	int32 childSubexpressionId = 1;
+    	// We need the following variable to keep the subexpression id levels.
+    	// e-g: 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
+    	rstring subexpressionId = "";
+    	int32 currentNestedSubexpressionLevel = 0;
+    	boolean lhsPrecededByOpenParenthesis = false;
+    	boolean enclosedSingleSubexpressionFound = false;
+    	boolean consecutiveCloseParenthesisFound = false;
+
+    	/*
+    	*********************************************************
+		After several days of doing logic exercises both mentally and
+		on paper, I came up with the following high level steps for
+		processing the nested subexpressions. In my analysis, it
+		worked well for the nested subexpression pattern examples
+		that are repeatedly shown in different sections of the
+		code in this file. More testing needs to be done using
+		additional nested subexpressions to fully validate and
+		harden these steps.
+
+		1) This is the logic performed in the Open Parenthesis (OP) processing block.
+		a) If the next non-space character is another OP, continue the loop.
+		b) If (OP-CP > 1), set currentNestedSubexpressionLevel++.
+		c) If subexpressionLayoutList (SELOL) size is zero,
+		   set enclosedSingleSubexpressionFound = false and continue the loop.
+		d) If SELOL size is non-zero and enclosedSingleSubexpressionFound == true,
+		   set enclosedSingleSubexpressionFound = false. Do a special check to
+		   see if the current subexpression is self enclosed. If it is,
+		   continue the loop.
+		e) If SELOL size is non-zero and enclosedSingleSubexpressionFound == false,
+		   complete that SELOL by saving its very last logical operator item value
+		   into a temporary variable and then setting that item to "".
+		f) Insert the SELOL in subexpressionsMap (SEMAP).
+		g) Insert the saved logical operator value in intraNestedSubexpressionLogicalOperatorsMap.
+		h) Clear SELOL and set multiPartSubexpressionPartsCnt = 0.
+		i) Continue the loop.
+
+		2)This is the logic performed in the Close Parenthesis (CP) processing block.
+		a) If (OP != CP) and (currentNestedSubexpressionLevel > 0) and
+           the next non-space character is another CP, then
+           set consecutiveCloseParenthesisFound = true. Continue the loop.
+
+		b) If (OP != CP) and (currentNestedSubexpressionLevel > 0) and
+           the next non-space character is not another CP and
+           lhsPrecededByOpenParenthesis == true and
+           consecutiveCloseParenthesisFound == false, then it is an
+           enclosed single subexpression.
+           So, set currentNestedSubexpressionLevel = 0 and
+           enclosedSingleSubexpressionFound = true. Continue the loop.
+
+		c1) If (OP != CP) and (currentNestedSubexpressionLevel > 0) and
+		    the next non-space character is not another CP and
+            the complementary condition to (2b) exists and
+            SELOL size is not-zero, complete the SELOL by setting
+            its very last logical operator item value to "".
+		c2) Insert the SELOL in subexpressionsMap (SEMAP).
+		c3) Clear SELOL and set multiPartSubexpressionPartsCnt = 0.
+		c4) Set enclosedSingleSubexpressionFound = false. Continue the loop.
+
+		d1) If (OP == CP) and (currentNestedSubexpressionLevel > 0),
+		    set currentNestedSubexpressionLevel++.
+		d2) If SELOL size is non-zero, complete that SELOL by setting its
+		    very last logical operator item value to "".
+		d3) Insert the SELOL in subexpressionsMap (SEMAP).
+		d4) Clear SELOL and set multiPartSubexpressionPartsCnt = 0.
+		d5) Set currentNestedSubexpressionLevel = 0.
+		d6) Set consecutiveCloseParenthesisFound = false.
+
+		3) This is the logic performed in the Logical Operator processing block.
+		a1) If (OP != CP) and (currentNestedSubexpressionLevel > 0 and
+		    subexpressionLayoutList (SELOL) size is 0) OR
+            (consecutiveCloseParenthesisFound == true), insert the
+		    logical operator in the intraNestedSubexpressionLogicalOperatorsMap.
+		a2) Set multiPartSubexpressionPartsCnt = 0.
+		a3) Set consecutiveCloseParenthesisFound = false.
+
+		b1) If (OP != CP) and (currentNestedSubexpressionLevel > 0) and
+		    subexpressionLayoutList (SELOL) size is non-zero, insert the
+		    logical operator in the SELOL.
+		b2) Increment multiPartSubexpressionPartsCnt.
+
+		c1) If (OP == CP) add the logical operator to the
+		    interSubexpressionLogicalOperatorsList.
+		c2) If SELOL size is non-zero, complete that SELOL by setting its
+		    very last logical operator item value to "".
+		c3) Insert the SELOL in subexpressionsMap (SEMAP).
+		c4) Clear SELOL and set multiPartSubexpressionPartsCnt = 0.
+		c5) Set the currentNestedSubexpressionLevel = 0.
+    	*********************************************************
+    	*/
 
     	// Stay in this loop and validate lhs, rhs, logical operators etc. and
     	// keep building the expression evaluation map structure which will be
@@ -1771,14 +1920,17 @@ namespace eval_predicate_functions {
     			continue;
     		}
 
-    		// If it is open parenthesis, do some bookeeping and move to the next position.
+			int32 selolSize =
+				Functions::Collections::size(subexpressionLayoutList);
+			int32 semapSize =
+				Functions::Collections::size(subexpressionsMap);
+
+    		// If it is open parenthesis, do some bookkeeping and move to the next position.
     		// e-g:
     		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
     		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
     		if(currentChar == '(') {
     			// We can only allow ( right before an LHS and nowhere else.
-    			// This is because we currently support only zero or single parenthesis pair at a time.
-    			// When, we start supporing nested parenthesis pairs, we will lift this restriction.
     			if(lhsFound != false) {
     				error = OPEN_PARENTHESIS_FOUND_NOT_RIGHT_BEFORE_LHS;
     				return(false);
@@ -1795,31 +1947,99 @@ namespace eval_predicate_functions {
     			// We can't allow the first open parenthesis in the middle of the
     			// expression after we already processed at least one subexpression that
     			// had zero parenthesis surrounding it.
-    			if(openParenthesisCnt == 0 &&
-    				(Functions::Collections::size(subexpressionLayoutList) > 0 ||
-    				Functions::Collections::size(subexpressionsMap) > 0)) {
+    			if(openParenthesisCnt == 0 && (selolSize > 0 || semapSize > 0)) {
     				error = FIRST_OPEN_PARENTHESIS_OCCURS_AFTER_A_COMPLETED_SUBEXPRESSION;
     				return(false);
     			}
 
+    			// This flag is one of the many useful things we have
+    			// for processing different sorts of nested subexpressions.
+    			// This flag will get reset to false every time when a
+    			// logical operator is found after a subexpression.
+    			lhsPrecededByOpenParenthesis = true;
+    			// As a safety measure, reset this flag.
+    			consecutiveCloseParenthesisFound = false;
     			openParenthesisCnt++;
 
-    			// As of Mar/18/2021, we decided to support only a single level of
-    			// subexpression grouping without any nesting. We will think
-    			// about supporting deep nesting at a later time i.e. a subexpression
-    			// containing other subexpressions.
-    			// With this restriction, we will not allow more than one
-    			// open parenthesis to be active as we parse through the expression string.
-    			// In short, we can only have open parenthesis one more than the number of
-    			// close parenthesis we have seen thus far in the expression string.
-    			if((openParenthesisCnt - closeParenthesisCnt) > 1) {
-    				error = NESTED_OPEN_PARENTHESIS_FOUND;
-    				return(false);
-    			}
+    			// Check if we have to perform the steps needed for
+    			// processing the nested subexpressions.
+    			// This while loop is used here for a convenience of
+    			// avoiding the use of too many if conditional blocks.
+    			// So, the last statement in this loop must be a break.
+    			while(true) {
+					// The next non-space character must not be an
+					// open parenthesis for us to continue further.
+					if(isNextNonSpaceCharacterOpenParenthesis(myBlob,
+						idx, stringLength) == true) {
+						break;
+					}
+
+					if((openParenthesisCnt - closeParenthesisCnt) <= 1) {
+						// We are not in a nested expression.
+						break;
+					}
+
+					// Increment the nested level by one.
+					currentNestedSubexpressionLevel++;
+
+					if(selolSize == 0) {
+						// This subexpression processing has to continue before
+						// we can continue further steps related to the
+						// nested subexpressions.
+						// This may turn out to be an enclosed single subexpression when
+						// after the full subexpression is parsed. Let us reset this flag now.
+						enclosedSingleSubexpressionFound = false;
+						break;
+					}
+
+					// If we are observing a sequence of enclosed single subexpressions,
+					// then we have no further step to perform at this time.
+					// e-g: // (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+					if(enclosedSingleSubexpressionFound == true) {
+						// Reset this flag now.
+						enclosedSingleSubexpressionFound = false;;
+
+						// Do a quick and special look ahead test to see if the
+						// current subexpression that we are just about to
+						// process is also an enclosed single subexpression.
+						// If yes, then there is a sequence of them.
+						if(isThisAnEnclosedSingleSubexpression(expr, idx) == true) {
+							// Let this enclosed single subexpression chain continue.
+							// We have no other step to perform now.
+							break;
+						}
+					}
+
+					// Save the very last logical operator item value in SELOL
+					// into a temporary variable
+					rstring logicalOperator =
+						subexpressionLayoutList[selolSize - 1];
+					// We are going to declare the end of this nested subexpression.
+					subexpressionLayoutList[selolSize - 1] = "";
+					// Get a new id for this nested subexpression.
+					// e-g: 2.3
+					// Please note that we want a new id for the previously
+					// parsed and validated nested subexpression.
+					// So, remember to reduce the nested level by one to
+					// refer to the subexpression that just got processed.
+					getNextSubexpressionId(currentNestedSubexpressionLevel - 1,
+						subexpressionId);
+					// Insert the SELOL into the SEMAP now using the new id.
+					Functions::Collections::insertM(subexpressionsMap,
+						subexpressionId, subexpressionLayoutList);
+					// Insert the saved logical operator value into its own map.
+					Functions::Collections::insertM(intraNestedSubexpressionLogicalOperatorsMap,
+						subexpressionId, logicalOperator);
+					// Reset the ones below.
+					Functions::Collections::clearM(subexpressionLayoutList);
+					multiPartSubexpressionPartsCnt = 0;
+					// We must be in this loop only for one iteration.
+					break;
+    			} // End of while(true)
 
     			idx++;
     			continue;
-    		}
+    		} // End of if(currentChar == '(')
 
     		// If it is a close parenthesis, let us see if it appears in the expected place.
     		// e-g:
@@ -1851,22 +2071,134 @@ namespace eval_predicate_functions {
 
     			closeParenthesisCnt++;
 
-    			// As of Mar/18/2021, we decided to support only a single level of
-    			// subexpression grouping without any nesting. We will think
-    			// about supporting deep nesting at a later time i.e. subexpressions
-    			// containing other subexpressions.
-    			// With this restriction, we will not allow more than one
-    			// close parenthesis to be active as we parse through the expression string.
-    			// In short, number of close parenthesis count must be same as
-    			// the open parentheis we have seen thus far in the expression string.
-    			if(closeParenthesisCnt != openParenthesisCnt) {
-    				error = NESTED_CLOSE_PARENTHESIS_FOUND;
-    				return(false);
-    			}
+    			// Check if we have to perform the steps needed for
+    			// processing the nested subexpressions.
+    			// This while loop is used here for a convenience of
+    			// avoiding the use of too many if conditional blocks.
+    			// So, the last statement in this loop must be a break.
+    			while(true) {
+    				if(currentNestedSubexpressionLevel == 0) {
+    					// We are not in a nested expression.
+    					break;
+    				}
+
+    				if(openParenthesisCnt != closeParenthesisCnt) {
+    					// The next non-space character must not be a
+    					// close parenthesis for us to continue further.
+    					if(isNextNonSpaceCharacterCloseParenthesis(myBlob,
+    						idx, stringLength) == true) {
+    						// We see here consecutive occurrences of CP.
+    						// It means a nested subexpression has completed.
+    						// We will do the actual processing during the
+    						// next iteration of the main outer while loop.
+    						// This flag will get reset either in the
+    						// (OP == CP) processing block below or
+    						// later in the logical operator processing block or
+    						// the next time when an OP is found and processed.
+    						consecutiveCloseParenthesisFound = true;
+    						break;
+    					}
+
+    					if(selolSize == 0) {
+    						// This should never happen.
+    						// i.e. a CP with no entries in SELOL.
+    						// But, we will still check for it.
+    						break;
+    					}
+
+    					if(lhsPrecededByOpenParenthesis == true &&
+    						consecutiveCloseParenthesisFound == false) {
+    						// A presence of CP like this means that the
+    						// SELOL doesn't have the Intra subexpression
+    						// logical operator entry yet. The last item in
+    						// SELOL probably is the RHSValue. And then we
+    						// are now seeing this CP. It indicates that it is
+    						// an enclosed single subexpression.
+    						// Reset the nested subexpression level indicator.
+    						currentNestedSubexpressionLevel = 0;
+    						// Set this flag to say that it is an enclosed single SE.
+    						enclosedSingleSubexpressionFound = true;
+    						break;
+    					} else {
+    						// This CP is not happening for a single SE enclosure.
+    						// Instead, it is happening at the end of a
+    						// nested subexpression.
+        					// If SELOL is not empty, we can complete the current
+        					// nested subexpression where this CP is at now.
+        					if(selolSize > 0) {
+								// Let us append an empty string in the logical operator
+								// slot of the subexpression layout list for that last
+								// completed nested subexpression.
+								rstring str = "";
+								Functions::Collections::appendM(subexpressionLayoutList, str);
+								// Get a new id for this processed nested subexpression.
+								// e-g: 2.3
+								int32 nestedLevel = currentNestedSubexpressionLevel;
+
+								// If we have a consecutive CP situation, then we will
+								// make the nested level to arbitrary number that is
+								// higher than 1 so that it will get the proper
+								// nested subexpression id.
+								if(consecutiveCloseParenthesisFound == true) {
+									// It must be any number higher than 1.
+									nestedLevel = 2;
+								}
+
+								getNextSubexpressionId(nestedLevel, subexpressionId);
+								// Insert the SELOL into the SEMAP now using the new id.
+								Functions::Collections::insertM(subexpressionsMap,
+									subexpressionId, subexpressionLayoutList);
+								// Reset the ones below.
+								Functions::Collections::clearM(subexpressionLayoutList);
+        					}
+
+							multiPartSubexpressionPartsCnt = 0;
+							enclosedSingleSubexpressionFound = false;
+							break;
+    					}
+    				} else {
+    					// We have matching OP and CP counts.
+    					// Increment the nested subexpression level only
+    					// when this CP is not part of an enclosed single SE.
+    					if(lhsPrecededByOpenParenthesis != true) {
+    						currentNestedSubexpressionLevel++;
+    					}
+
+    					// If SELOL is not empty, we can complete the current
+    					// nested subexpression where this CP is at now.
+    					if(selolSize > 0) {
+							// Let us append an empty string in the logical operator
+							// slot of the subexpression layout list for that last
+							// completed nested subexpression.
+							rstring str = "";
+							Functions::Collections::appendM(subexpressionLayoutList, str);
+							// Get a new id for this processed nested subexpression.
+							// e-g: 2.3
+							getNextSubexpressionId(currentNestedSubexpressionLevel,
+								subexpressionId);
+							// Insert the SELOL into the SEMAP now using the new id.
+							Functions::Collections::insertM(subexpressionsMap,
+								subexpressionId, subexpressionLayoutList);
+							// Reset the ones below.
+							Functions::Collections::clearM(subexpressionLayoutList);
+							multiPartSubexpressionPartsCnt = 0;
+    					}
+
+    					multiPartSubexpressionPartsCnt = 0;
+    					// Set the nested subexpression level to 0.
+    					currentNestedSubexpressionLevel = 0;
+    					// Just because OP == CP now, we can reset this flag.
+    					consecutiveCloseParenthesisFound = false;
+    					break;
+    				} // End of the (OP != CP) if block.
+
+					// We must be in this loop only for one iteration.
+					break;
+    			} // End of while(true)
 
     			idx++;
     			continue;
-    		}
+    		} // End of if(currentChar == ')')
 
     		// If we have not yet found the lhs, let us try to match with what is
     		// allowed based on the user given tuple.
@@ -1931,10 +2263,12 @@ namespace eval_predicate_functions {
 							continue;
 						}
 
-						// We have a good start to finding a new LHS.
-						// Before we do that, we can reset this status flag that
+						// We have a good start in finding a new LHS.
+						// Before we do that, we can reset these status flags that
 						// may have been set in the previous processing step.
+						// It is done simply as a safety measure.
 						logicalOperatorFound = false;
+						enclosedSingleSubexpressionFound = false;
 
 						// Let us ensure that we meet one of these parenthesis rules before
 						// we can proceed with processing this LHS.
@@ -2450,6 +2784,7 @@ namespace eval_predicate_functions {
 
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 6a ====" << endl;
+					cout << "Full expression=" << expr << endl;
 					cout <<  "Subexpression layout list after validating an LHS." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -2460,14 +2795,25 @@ namespace eval_predicate_functions {
 	    				it++;
 	    			} // End of list iteration while loop.
 
-	    			cout <<  "Inter subexpression logical operators list after validating an LHS." << endl;
-	    			ConstListIterator it2 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+	    			cout <<  "Intra nested subexpression logical operators map after validating an LHS." << endl;
+					ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
 
-	    			while (it2 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
-	    				ConstValueHandle myVal2 = *it2;
-	    				rstring const & myString2 = myVal2;
-	    				cout << myString2 << endl;
-	    				it2++;
+					while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
+						std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
+						std::pair<rstring,rstring> const & myRStringRString = myVal2;
+						cout << "NestedSubexpressionId=" << myRStringRString.first <<
+							", Logical operator=" <<  myRStringRString.second << endl;
+						it2++;
+					}
+
+	    			cout <<  "Inter subexpression logical operators list after validating an LHS." << endl;
+	    			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+
+	    			while (it3 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
+	    				ConstValueHandle myVal3 = *it3;
+	    				rstring const & myString3 = myVal3;
+	    				cout << myString3 << endl;
+	    				it3++;
 	    			}
 
 					cout << "==== END eval_predicate trace 6a ====" << endl;
@@ -2987,6 +3333,7 @@ namespace eval_predicate_functions {
 
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 7a ====" << endl;
+					cout << "Full expression=" << expr << endl;
 					cout <<  "Subexpression layout list after validating an operation verb." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -2997,14 +3344,25 @@ namespace eval_predicate_functions {
 	    				it++;
 	    			} // End of list iteration while loop.
 
-	    			cout <<  "Inter subexpression logical operators list after validating an operation verb." << endl;
-	    			ConstListIterator it2 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+	    			cout <<  "Intra nested subexpression logical operators map after validating an operation verb." << endl;
+					ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
 
-	    			while (it2 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
-	    				ConstValueHandle myVal2 = *it2;
-	    				rstring const & myString2 = myVal2;
-	    				cout << myString2 << endl;
-	    				it2++;
+					while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
+						std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
+						std::pair<rstring,rstring> const & myRStringRString = myVal2;
+						cout << "NestedSubexpressionId=" << myRStringRString.first <<
+							", Logical operator=" <<  myRStringRString.second << endl;
+						it2++;
+					}
+
+	    			cout <<  "Inter subexpression logical operators list after validating an operation verb." << endl;
+	    			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+
+	    			while (it3 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
+	    				ConstValueHandle myVal3 = *it3;
+	    				rstring const & myString3 = myVal3;
+	    				cout << myString3 << endl;
+	    				it3++;
 	    			}
 
 					cout << "==== END eval_predicate trace 7a ====" << endl;
@@ -3070,10 +3428,10 @@ namespace eval_predicate_functions {
     			} // End of if(lhsAttribType == "boolean")
 
     			// RHS integer value validation has to handle the collection item
-    			// existense check operation in a specific way because we support
+    			// existence check operation in a specific way because we support
     			// map key existence check which means key is the first part in a map.
     			// So, we do a separate check for that and then the rest of the
-    			// LHS integer usage. Plese note that when it comes to a map,
+    			// LHS integer usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 	    			currentOperationVerb != "notContains") &&
@@ -3199,10 +3557,10 @@ namespace eval_predicate_functions {
 				} // End of if(lhsAttribType == int32 ...
 
     			// RHS float value validation has to handle the collection item
-    			// existense check operation in a specific way because we support
+    			// existence check operation in a specific way because we support
     			// map key existence check which means key is the first part in a map.
     			// So, we do a separate check for that and then the rest of the
-    			// LHS float usage. Plese note that when it comes to a map,
+    			// LHS float usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 		    			currentOperationVerb != "notContains") &&
@@ -3335,10 +3693,10 @@ namespace eval_predicate_functions {
 				} // End of if(lhsAttribType == "float32" ...
 
     			// RHS string value validation has to handle the collection item
-    			// existense check operation in a specific way because we support
+    			// existence check operation in a specific way because we support
     			// map key existence check which means key is the first part in a map.
     			// So, we do a separate check for that and then the rest of the
-    			// LHS string usage. Plese note that when it comes to a map,
+    			// LHS string usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 		    		currentOperationVerb != "notContains") &&
@@ -3406,6 +3764,7 @@ namespace eval_predicate_functions {
 
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 8a ====" << endl;
+					cout << "Full expression=" << expr << endl;
 					cout <<  "Subexpression layout list after validating an RHS." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -3416,14 +3775,25 @@ namespace eval_predicate_functions {
 	    				it++;
 	    			} // End of list iteration while loop.
 
-	    			cout <<  "Inter subexpression logical operators list after validating an RHS." << endl;
-	    			ConstListIterator it2 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+	    			cout <<  "Intra nested subexpression logical operators map after validating an RHS." << endl;
+					ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
 
-	    			while (it2 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
-	    				ConstValueHandle myVal2 = *it2;
-	    				rstring const & myString2 = myVal2;
-	    				cout << myString2 << endl;
-	    				it2++;
+					while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
+						std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
+						std::pair<rstring,rstring> const & myRStringRString = myVal2;
+						cout << "NestedSubexpressionId=" << myRStringRString.first <<
+							", Logical operator=" <<  myRStringRString.second << endl;
+						it2++;
+					}
+
+	    			cout <<  "Inter subexpression logical operators list after validating an RHS." << endl;
+	    			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+
+	    			while (it3 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
+	    				ConstValueHandle myVal3 = *it3;
+	    				rstring const & myString3 = myVal3;
+	    				cout << myString3 << endl;
+	    				it3++;
 	    			}
 
 					cout << "==== END eval_predicate trace 8a ====" << endl;
@@ -3498,8 +3868,11 @@ namespace eval_predicate_functions {
     			lhsFound = false;
     			operationVerbFound = false;
     			rhsFound = false;
+    			lhsPrecededByOpenParenthesis = false;
     			// Set this flag to indicate where we are now.
     			logicalOperatorFound = true;
+				int32 selolSize =
+					Functions::Collections::size(subexpressionLayoutList);
 
         		// e-g: a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
         		// e-g: (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
@@ -3516,55 +3889,71 @@ namespace eval_predicate_functions {
     	    	// ...   - The sequence above repeats for this subexpression.
     	    	//
     			if(openParenthesisCnt != closeParenthesisCnt) {
-    				// We are still within the same subexpression.
-    				// Append the current intra subexpression logical operator we just found.
-    				Functions::Collections::appendM(subexpressionLayoutList,
-    					mostRecentLogicalOperatorFound);
-    				// Increment the parts count for this multi-part subexpression.
-    				multiPartSubexpressionPartsCnt++;
+    				// Do a special step for assistance with the
+    				// processing of nested subexpressions.
+    				if((currentNestedSubexpressionLevel > 0 && selolSize == 0) ||
+    					(consecutiveCloseParenthesisFound == true)){
+						// Insert the logical operator value into a separate map where
+    					// the intra nested subexpression logical operators are kept.
+						Functions::Collections::insertM(intraNestedSubexpressionLogicalOperatorsMap,
+							subexpressionId, mostRecentLogicalOperatorFound);
+						multiPartSubexpressionPartsCnt = 0;
+						consecutiveCloseParenthesisFound = false;
+    				} else {
+						// We are still within the same subexpression.
+						// Append the current intra subexpression logical operator we just found.
+    					// This else block will cover both the cases where we are
+    					// either within a nested or non-nested subexpression.
+    					// In the nested case, we will come to this else block only
+    					// when SELOL has non-zero size. Refer to the nested
+    					// subexpression processing steps 3b1 and 3b2 at the
+    					// top of this method.
+						Functions::Collections::appendM(subexpressionLayoutList,
+							mostRecentLogicalOperatorFound);
+						// Increment the parts count for this multi-part subexpression.
+						multiPartSubexpressionPartsCnt++;
+    				}
     			} else {
-    				// We are now just outside of a subexpression that was processed
-    				// completely. The next one will be a new subexpression.
-    				// So let us append an empty string in the logical operator
-    				// slot of the subexpression layout list for that
-    				// completed subexpression.
-        			rstring str = "";
-    				Functions::Collections::appendM(subexpressionLayoutList, str);
-    				// We can add this inter subexpression logical separator to
+					// We can now add this inter subexpression logical separator to
     				// the list where we will keep them for later use.
     				Functions::Collections::appendM(interSubexpressionLogicalOperatorsList,
     					mostRecentLogicalOperatorFound);
 
-    				// We can now add this completed subexpression layout list to
-    				// the subexpressions map.
-    		    	// Let us form a map key now (e-g: 1.1)
-    		    	ostringstream key;
-    		    	key << parentSubexpressionId << "." << childSubexpressionId;
-    		    	rstring myKey = key.str();
-    		    	Functions::Collections::insertM(subexpressionsMap,
-    		    		myKey, subexpressionLayoutList);
-    		    	// We can clear the subexpression layout list now to
-    		    	// start processing the next new subexpression.
-    		    	Functions::Collections::clearM(subexpressionLayoutList);
+    				// We are now just outside of a subexpression that was processed
+    				// completely. The next one will be a new subexpression.
+    				// So let us append an empty string in the logical operator
+    				// slot of the subexpression layout list to indicate the end of
+    				// that completed subexpression.
+    				// We can do this only if we come to this else block after
+    				// processing a non-nested subexpression in which case we will
+    				// have the SELOL with non-zero size. If we come here after
+    				// processing a nested subexpression, then SELOL will be
+    				// empty in which case, we can skip inserting that empty
+    				// SELOL into the SEMAP.
+    				if(selolSize > 0) {
+						rstring str = "";
+						Functions::Collections::appendM(subexpressionLayoutList, str);
+	    				// We can now add this completed subexpression layout list to
+	    				// the subexpressions map.
+	    		    	// Let us get a map key now (e-g: 1.1, 4.1 etc.)
+	    				// First argument 0 indicates that it is not a
+	    				// nested subexpression that just got processed.
+	    				getNextSubexpressionId(0, subexpressionId);
+	    		    	Functions::Collections::insertM(subexpressionsMap,
+	    		    		subexpressionId, subexpressionLayoutList);
+	    		    	// We can clear the subexpression layout list now to
+	    		    	// start processing the next new subexpression.
+	    		    	Functions::Collections::clearM(subexpressionLayoutList);
+    				}
+
     		    	// We may encounter a brand new subexpression. So, reset this counter.
     		    	multiPartSubexpressionPartsCnt = 0;
-
-    		    	// Increment the subexpression identifier for the next
-    		    	// new subexpression we may encounter.
-    		    	// At this time, we are supporting only zero or a single level of
-    		    	// parenthesis in the given expression. So, it is sufficient to
-    		    	// increment only the parent id.
-    		    	// When we start supporting more than one parenthesis pair i.e.
-    		    	// nested parenthesis in future releases, we will have to
-    		    	// make changes to this logic.
-    		    	parentSubexpressionId++;
+    		    	// Reset this value just as a safety measure.
+    		    	currentNestedSubexpressionLevel = 0;
     			}
 
-    			// Since we don't support nested subexpressions at this time,
-    			// we can't allow the use of different kinds of
-    			// logical operators between subexpressions.
-    			// So, we have to ensure that the interSubexpressionLogicalOperatorsList
-    			// contains a homegeneous set of logical operators.
+    			// We have to ensure that the interSubexpressionLogicalOperatorsList
+    			// contains a homogeneous set of logical operators.
     			// We need the following logic to check for that condition.
 				SPL::set<rstring> mySet =
 					Functions::Collections::toSet(interSubexpressionLogicalOperatorsList);
@@ -3587,6 +3976,12 @@ namespace eval_predicate_functions {
 
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 9a ====" << endl;
+					cout << "Full expression=" << expr << endl;
+					cout << "currentNestedSubexpressionLevel=" <<
+						currentNestedSubexpressionLevel << endl;
+					cout << "multiPartSubexpressionPartsCnt=" <<
+						multiPartSubexpressionPartsCnt << endl;
+
 					cout <<  "Most recent logical operator found is " <<
 						mostRecentLogicalOperatorFound << endl;
 
@@ -3600,40 +3995,50 @@ namespace eval_predicate_functions {
 	    				it++;
 	    			} // End of list iteration while loop.
 
-	    			cout <<  "Inter subexpression logical operators list after validating a logical operator." << endl;
-	    			ConstListIterator it2 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+	    			cout <<  "Intra nested subexpression logical operators map after validating a logical operator." << endl;
+					ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
 
-	    			while (it2 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
-	    				ConstValueHandle myVal2 = *it2;
-	    				rstring const & myString2 = myVal2;
-	    				cout << myString2 << endl;
-	    				it2++;
+					while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
+						std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
+						std::pair<rstring,rstring> const & myRStringRString = myVal2;
+						cout << "NestedSubexpressionId=" << myRStringRString.first <<
+							", Logical operator=" <<  myRStringRString.second << endl;
+						it2++;
+					}
+
+	    			cout <<  "Inter subexpression logical operators list after validating a logical operator." << endl;
+	    			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+
+	    			while (it3 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
+	    				ConstValueHandle myVal3 = *it3;
+	    				rstring const & myString3 = myVal3;
+	    				cout << myString3 << endl;
+	    				it3++;
 	    			}
 
 	    			cout <<  "Subexpressions map after validating a logical operator." << endl;
-
-					ConstMapIterator it3 = subexpressionsMap.getBeginIterator();
+					ConstMapIterator it4 = subexpressionsMap.getBeginIterator();
 					int32 cnt  = 0;
 
-					while (it3 != subexpressionsMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal3 = *it3;
-						std::pair<rstring,SPL::list<rstring> > const & myRStringSplListRString = myVal3;
+					while (it4 != subexpressionsMap.getEndIterator()) {
+						std::pair<ConstValueHandle, ConstValueHandle> myVal4 = *it4;
+						std::pair<rstring,SPL::list<rstring> > const & myRStringSplListRString = myVal4;
 						cout << "Map Key" << ++cnt << "=" <<
 							myRStringSplListRString.first << endl;
 
 						cout << "Map value:" << endl;
 						// Let us display the contents of the map value which is a list.
 		    			SPL::list<rstring> const & myListRString = myRStringSplListRString.second;
-		    			ConstListIterator it4 = myListRString.getBeginIterator();
+		    			ConstListIterator it5 = myListRString.getBeginIterator();
 
-		    			while (it4 != myListRString.getEndIterator()) {
-		    				ConstValueHandle myVal4 = *it4;
-		    				rstring const & myRString = myVal4;
+		    			while (it5 != myListRString.getEndIterator()) {
+		    				ConstValueHandle myVal5 = *it5;
+		    				rstring const & myRString = myVal5;
 		    				cout << myRString << endl;
-		    				it4++;
+		    				it5++;
 		    			}
 
-						it3++;
+						it4++;
 					}
 
 					cout << "==== END eval_predicate trace 9a ====" << endl;
@@ -3662,25 +4067,39 @@ namespace eval_predicate_functions {
     		// true. This represents a clean expression validation.
     		error = ALL_CLEAR;
 
-    		// Since it is the very final subexpression processed,
-    		// we have to add it to the subexpression map.
-			// Let us append an empty string in the logical operator
-			// slot of the subexpression layout list for that
-			// completed subexpression.
-			rstring str = "";
-			Functions::Collections::appendM(subexpressionLayoutList, str);
+    		// Is there a pending subexpression layout list that
+    		// needs to be added to the subexpressions map?
+    		// This is usually the case when the very last
+    		// subexpression is a non-nested one.
+    		if(Functions::Collections::size(subexpressionLayoutList) > 0) {
+				// Since it is the very final subexpression processed,
+				// we have to add it to the subexpression map.
+				// Let us append an empty string in the logical operator
+				// slot of the subexpression layout list for that
+				// completed subexpression.
+				rstring str = "";
+				Functions::Collections::appendM(subexpressionLayoutList, str);
 
-			// We can now add this completed subexpression layout list to
-			// the subexpressions map.
-	    	// Let us form a map key now (e-g: 1.1)
-	    	ostringstream key;
-	    	key << parentSubexpressionId << "." << childSubexpressionId;
-	    	rstring myKey = key.str();
-	    	Functions::Collections::insertM(subexpressionsMap,
-	    		myKey, subexpressionLayoutList);
+				// We can now add this completed subexpression layout list to
+				// the subexpressions map. Just because this is the very final
+				// subexpression processed, open and close parenthesis count
+				// must be the same at this point.
+				// Let us get a map key now (e-g: 1.1, 4.1 etc.)
+				// First argument 0 indicates that it is not a
+				// nested subexpression that just got processed.
+				getNextSubexpressionId(0, subexpressionId);
+				Functions::Collections::insertM(subexpressionsMap,
+					subexpressionId, subexpressionLayoutList);
+    		}
 
 			if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 10a ====" << endl;
+				cout << "Full expression=" << expr << endl;
+				cout << "currentNestedSubexpressionLevel=" <<
+					currentNestedSubexpressionLevel << endl;
+				cout << "multiPartSubexpressionPartsCnt=" <<
+					multiPartSubexpressionPartsCnt << endl;
+
 				cout <<  "Subexpression layout list after validating the full expression." << endl;
     			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -3691,40 +4110,51 @@ namespace eval_predicate_functions {
     				it++;
     			} // End of list iteration while loop.
 
-    			cout <<  "Inter subexpression logical operators list after validating the full expression." << endl;
-    			ConstListIterator it2 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+    			cout <<  "Intra nested subexpression logical operators map after validating the full expression." << endl;
+				ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
 
-    			while (it2 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
-    				ConstValueHandle myVal2 = *it2;
-    				rstring const & myString2 = myVal2;
-    				cout << myString2 << endl;
-    				it2++;
+				while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
+					std::pair<rstring,rstring> const & myRStringRString = myVal2;
+					cout << "NestedSubexpressionId=" << myRStringRString.first <<
+						", Logical operator=" <<  myRStringRString.second << endl;
+					it2++;
+				}
+
+    			cout <<  "Inter subexpression logical operators list after validating the full expression." << endl;
+    			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
+
+    			while (it3 != interSubexpressionLogicalOperatorsList.getEndIterator()) {
+    				ConstValueHandle myVal3 = *it3;
+    				rstring const & myString3 = myVal3;
+    				cout << myString3 << endl;
+    				it3++;
     			}
 
     			cout <<  "Subexpressions map after validating the full expression." << endl;
 
-				ConstMapIterator it3 = subexpressionsMap.getBeginIterator();
+				ConstMapIterator it4 = subexpressionsMap.getBeginIterator();
 				int32 cnt  = 0;
 
-				while (it3 != subexpressionsMap.getEndIterator()) {
-					std::pair<ConstValueHandle, ConstValueHandle> myVal3 = *it3;
-					std::pair<rstring,SPL::list<rstring> > const & myRStringSplListRString = myVal3;
+				while (it4 != subexpressionsMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal4 = *it4;
+					std::pair<rstring,SPL::list<rstring> > const & myRStringSplListRString = myVal4;
 					cout << "Map Key" << ++cnt << "=" <<
 						myRStringSplListRString.first << endl;
 
 					cout << "Map value:" << endl;
 					// Let us display the contents of the map value which is a list.
 	    			SPL::list<rstring> const & myListRString = myRStringSplListRString.second;
-	    			ConstListIterator it4 = myListRString.getBeginIterator();
+	    			ConstListIterator it5 = myListRString.getBeginIterator();
 
-	    			while (it4 != myListRString.getEndIterator()) {
-	    				ConstValueHandle myVal4 = *it4;
-	    				rstring const & myRString = myVal4;
+	    			while (it5 != myListRString.getEndIterator()) {
+	    				ConstValueHandle myVal5 = *it5;
+	    				rstring const & myRString = myVal5;
 	    				cout << myRString << endl;
-	    				it4++;
+	    				it5++;
 	    			}
 
-					it3++;
+					it4++;
 				}
 
 				cout << "==== END eval_predicate trace 10a ====" << endl;
@@ -3743,15 +4173,89 @@ namespace eval_predicate_functions {
     	}
 
     	if(error == ALL_CLEAR) {
+    		// If we happen to have intra nested subexpression logical
+    		// operators in the map, they should all be of same kind within
+    		// a given nested subexpression group. Let us verify that now.
+    		//
+			// Let us sort the map keys so that we can process them
+    		// according to the nested subexpression id.
+			SPL::list<rstring> nestedSubexpressionIds =
+				Functions::Collections::keys(intraNestedSubexpressionLogicalOperatorsMap);
+			Functions::Collections::sortM(nestedSubexpressionIds);
+			int32 nestedSubexpressionIdsListSize =
+				Functions::Collections::size(nestedSubexpressionIds);
+
+			// Let us now check if the logical operators are of the
+			// same kind within a nested subexpression major group.
+			// e-g: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 2.4
+			// For an expression layout like the one shown above,
+			// intra nested subexpression logical operator list will
+			// look like this.
+			// 1.1, 1.2, 2.1, 2.2, 2.3
+			// As you can see, it will not have the last item in every
+			// nested subexpression group. That is because there will
+			// only be N-1 logical operators in a given nested group.
+			// We will check for the logical operator homogeneity now.
+			int32  previousSubExpressionId = -1;
+			rstring previousLogicalOperator = "";
+
+			for(int32 i=0; i<nestedSubexpressionIdsListSize; i++) {
+				rstring idString = nestedSubexpressionIds[i];
+				rstring currentLogicalOperator =
+					intraNestedSubexpressionLogicalOperatorsMap.at(idString);
+				SPL::list<rstring> tokens =
+					Functions::String::tokenize(idString, ".", false);
+				// We have to compare only at level 1 of the subexpression id.
+				// e-g: 2.4  Level 1 is 2 and Level is 4.
+				int32 currentId = atoi(tokens[0].c_str());
+
+				if(currentId != previousSubExpressionId) {
+					previousSubExpressionId = currentId;
+					previousLogicalOperator = currentLogicalOperator;
+					// This is a new nested group. So far good.
+				} else {
+					// Let us compare that the logical operator is the
+					// same within the current nested group.
+					if(currentLogicalOperator != previousLogicalOperator) {
+						// This is not good. There is a logical operator mismatch.
+		        		error = MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS;
+		        		return(false);
+					}
+				}
+			} // End of for loop.
+
         	// If we happen to have inter subexpression logical operators,
-        	// that should always be one less than total number of
-        	// subexpressions present in the subexpressions map.
+        	// that should always be one less than the unique number of
+			// subexpression ids present in the subexpressions map.
+			// We will match the uniqueness only in level 1 of the
+			// subexpression id.  e-g: 2.4  Level 1 is 2 and Level is 4.
+			// We have to do this, because, there may be nested subexpressions.
         	int32 subexpMapSize =
         		Functions::Collections::size(subexpressionsMap);
         	int32 logicalOpListSize =
         		Functions::Collections::size(interSubexpressionLogicalOperatorsList);
+			SPL::list<rstring> subexpressionIds =
+				Functions::Collections::keys(subexpressionsMap);
+			Functions::Collections::sortM(subexpressionIds);
+			previousSubExpressionId = -1;
+			int32 uniqueIdCnt = 0;
 
-        	if(logicalOpListSize != (subexpMapSize-1)) {
+			for(int32 i=0; i<subexpMapSize; i++) {
+				rstring idString = subexpressionIds[i];
+				SPL::list<rstring> tokens =
+					Functions::String::tokenize(idString, ".", false);
+				// We have to compare only at level 1 of the subexpression id.
+				// e-g: 2.4  Level 1 is 2 and Level is 4.
+				int32 currentId = atoi(tokens[0].c_str());
+
+				if(currentId != previousSubExpressionId) {
+					previousSubExpressionId = currentId;
+					// This is a new nested group. So far good.
+					uniqueIdCnt++;
+				}
+			} // End of for loop.
+
+        	if(logicalOpListSize != (uniqueIdCnt-1)) {
         		error = INCORRECT_NUMBER_OF_INTER_SUBEXPRESSION_LOGICAL_OPERATORS;
         		return(false);
         	} else {
@@ -3771,7 +4275,9 @@ namespace eval_predicate_functions {
     boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
     	Tuple const & myTuple, int32 & error, boolean trace=false) {
     	error = ALL_CLEAR;
-    	int result = false;
+    	int32 subexpressionCntInCurrentNestedGroup = 0;
+    	rstring intraNestedSubexpressionLogicalOperator = "";
+    	SPL::list<boolean> nestedSubexpressionEvalResults;
     	SPL::list<boolean> interSubexpressionEvalResults;
 
     	// We can find everything we need to perform the evaluation inside the
@@ -3781,33 +4287,37 @@ namespace eval_predicate_functions {
 		// rstring tupleSchema  --> Not needed for the eval logic below.
 		// SPL::map<rstring, SPL::list<rstring> > subexpressionsMap  --> Needed very much.
 		// SPL::list<rstring> subexpressionsMapKeys  --> Needed very much.
+    	// SPL::map<rstring, rstring> intraNestedSubexpressionLogicalOperatorsMap  --> Needed very much.
 		// SPL::list<rstring> interSubexpressionLogicalOperatorsList  --> Needed very much.
     	//
     	int32 subexpMapSize =
     		Functions::Collections::size(evalPlanPtr->getSubexpressionsMapKeys());
 
     	if(subexpMapSize == 0) {
-    		// It is a very rare error. However, we will check it.
+    		// It is a very rare error. However, we will check for it.
     		error = ZERO_SUBEXPRESSIONS_MAP_KEYS_FOUND_DURING_EVAL;
     		return(false);
     	}
 
     	// We have to loop through all the map keys in the specified order and then
-    	// process each subexpression.
+    	// process each subexpression. Some of the subexpressions may be within
+    	// a nested subexpression group. So, they have to be evaluated together to
+    	// obtain a single result for a given nested subexpression group before
+    	// using that single result with the other such nested or non-nested
+    	// subexpression groups.
     	for(int32 i=0; i<subexpMapSize; i++) {
     		// Get the map key.
     		rstring mapKey = evalPlanPtr->getSubexpressionsMapKeys()[i];
 
-    		// This map's key is a subexpression sequence id.
-    		// Subexpression sequence id will go something like this:
+    		// This map's key is a subexpression id.
+    		// Subexpression id will go something like this:
     		// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
-    		// Sequence id is made of a parent subexpression id and a child subexpression id.
-    		// In the example above, parent subexpression 2 has 4 children.
-    		// At this time, we only support either zero parenthesis or a single
-    		// level of parenthesis. There is no support for nested parenthesis.
+    		// Subexpression id is made of level 1 and level 2.
+			// We support either zero parenthesis or a single level or
+			// multilevel (nested) parenthesis.
     		// Logical operators used within a subexpression must be of the same kind.
-    		//
-    		// A few examples of zero, single and nested parenthesis.
+			//
+			// A few examples of zero, single and nested parenthesis.
     		//
     		// 1.1             2.1                 3.1           4.1
     		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
@@ -3815,17 +4325,26 @@ namespace eval_predicate_functions {
     		// 1.1                               2.1
     		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
     		//
-    		// 1.1                 2.1.1            2.1.2           2.2
+    		// 1.1                2.1                   3.1             4.1
+    		// (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+    		//
+    		// 1.1                          2.1                       2.2
     		// (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
     		//
-    		// 1.1                               2.1
-    		// a == "hi" && (b contains "xyz" || (g[4] > 6.7) || id % 8 == 3)
-    		//
-    		// 1.1                 2.1               2.2.1           2.2.2
+    		// 1.1                 2.1                       2.2
     		// (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
     		//
-    		// 1.1                 2.1.1                2.1.2           2.2
+    		// 1.1                                 2.1
     		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+    		//
+    		// 1.1                     2.1                 2.2
+    		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+    		//
+    		// 1.1                                        1.2                           2.1
+    		// ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
+    		//
+    		// 1.1                                                                   1.2                          1.3
+    		// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
     		//
     		// This map's value is a list that describes the composition of a given subexpression.
     		// Structure of such a list will go something like this:
@@ -3845,6 +4364,26 @@ namespace eval_predicate_functions {
     			return(false);
     		}
 
+    		// We support nested subexpressions. So, we must first check
+    		// if the current map key is part of a nested subexpression group.
+    		// In the map keys list, such nested subexpression ids will
+    		// appear in a sequential (sorted) order. After finding the first one,
+    		// we can process them one by one until we complete all of them.
+    		// So, it is necessary to get every new nested subexpression
+    		// group information only once. If we are already in the middle of
+    		// processing a nested subexpression group, we will skip this check.
+    		// Similarly, if a given subexpression is not part of a
+    		// nested group, calling the function below will not do any harm.
+    		if(intraNestedSubexpressionLogicalOperator == "") {
+    			// Let us find out if this map key is part of a
+    			// nested subexpression group.
+    			getNestedSubexpressionGroupInfo(mapKey,
+    				evalPlanPtr->getSubexpressionsMapKeys(),
+					evalPlanPtr->getIntraNestedSubexpressionLogicalOperatorsMap(),
+					subexpressionCntInCurrentNestedGroup,
+					intraNestedSubexpressionLogicalOperator);
+    		}
+
     		// Using the map key, get the subexpression layout list.
     		SPL::list<rstring> const & subexpressionLayoutList =
     			evalPlanPtr->getSubexpressionsMap().at(mapKey);
@@ -3860,7 +4399,12 @@ namespace eval_predicate_functions {
 
 			if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 4b ====" << endl;
+				cout << "Full expression=" << evalPlanPtr->getExpression() << endl;
 				cout << "Subexpressions map key=" << mapKey << endl;
+				cout << "subexpressionCntInCurrentNestedGroup=" <<
+					subexpressionCntInCurrentNestedGroup << endl;
+				cout << "intraNestedSubexpressionLogicalOperator=" <<
+					intraNestedSubexpressionLogicalOperator << endl;
 
 				// Print the subexpression layout list during the first iteraion of the while loop.
 				cout <<  "Subexpression layout list being evaluated:" << endl;
@@ -3883,7 +4427,7 @@ namespace eval_predicate_functions {
 
     		// Stay in a loop and evaluate every block available in the subexp layout list.
     		// We will run the evaluation on multiple dimensions (based on LHS attribute type,
-    		// operation verb or a comibation of those two. It is plenty of code below to
+    		// operation verb or a combination of those two. It is plenty of code below to
     		// cover all possible evaluations paths that we can support.
     		while(idx < subExpLayoutListCnt) {
     			loopCnt++;
@@ -5361,7 +5905,7 @@ namespace eval_predicate_functions {
     				intraSubexpressionEvalResult = subexpressionEvalResult;
     			} else {
     				// This is a successive eval result. We can combine it
-    				// with the accumated eval results thus far.
+    				// with the accumulated eval results thus far.
     				if(intraSubexpressionLogicalOperatorInUse == "&&") {
     					intraSubexpressionEvalResult =
     						intraSubexpressionEvalResult && subexpressionEvalResult;
@@ -5387,6 +5931,13 @@ namespace eval_predicate_functions {
 
     			if(trace == true) {
     				cout << "==== BEGIN eval_predicate trace 4c ====" << endl;
+    				cout << "Full expression=" << evalPlanPtr->getExpression() << endl;
+    				cout << "Subexpressions map key=" << mapKey << endl;
+    				cout << "subexpressionCntInCurrentNestedGroup=" <<
+    					subexpressionCntInCurrentNestedGroup << endl;
+    				cout << "intraNestedSubexpressionLogicalOperator=" <<
+    					intraNestedSubexpressionLogicalOperator << endl;
+
     				cout << "Loop Count=" << loopCnt << endl;
     				cout << "intraSubexpressionLogicalOperatorInUse=" <<
     					intraSubexpressionLogicalOperatorInUse << endl;
@@ -5405,9 +5956,74 @@ namespace eval_predicate_functions {
     			}
     		} // End of while(true)
 
-    		// Keep appending it to the list where we keep all the inter subexpression eval results.
-    		Functions::Collections::appendM(interSubexpressionEvalResults,
+    		// If this subexpression is not part of a nested group, we can
+    		// add its eval result right away in our interSubexpressionEvalResults list.
+    		if(intraNestedSubexpressionLogicalOperator == "") {
+    			// This is not part of a nested group.
+				// Keep appending its eval result to the list where we
+    			// store all the inter subexpression eval results.
+				Functions::Collections::appendM(interSubexpressionEvalResults,
+					intraSubexpressionEvalResult);
+				// Continue the for loop.
+				continue;
+    		}
+
+    		// We have a nested subexpression here. If we are in the middle of
+    		// processing subexpressions in a nested group, then we have to
+    		// collect such individual evaluation results. After we complete
+    		// the entire nested group, then we can combine those results and
+    		// add a single consolidated result for that nested group in our
+    		// interSubexpressionEvalResults list.
+    		//
+    		// Add the result to the nested subexpression eval result list.
+    		Functions::Collections::appendM(nestedSubexpressionEvalResults,
     			intraSubexpressionEvalResult);
+    		// Decrement the nested subexpression counter and see if we
+    		// processed all the subexpressions in that nested group.
+    		subexpressionCntInCurrentNestedGroup--;
+
+    		if(subexpressionCntInCurrentNestedGroup > 0) {
+    			// We are not yet done evaluating everything in this nested group.
+    			// Continue the next map key iteration in the for loop.
+    			continue;
+    		}
+
+			// We are done evaluating this nested group.
+			// We can consolidate its eval results now.
+			int32 listSize =
+				Functions::Collections::size(nestedSubexpressionEvalResults);
+			// Get the first eval result from the list.
+			boolean nestedEvalResult = nestedSubexpressionEvalResults[0];
+
+			for(int32 x=1; x<listSize; x++) {
+				if(intraNestedSubexpressionLogicalOperator == "&&") {
+					nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[x];
+
+					// Minor optimization by which we can break from the
+					// for loop if the logical AND result is false.
+					if(nestedEvalResult == false) {
+						break;
+					}
+				} else {
+					nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[x];
+
+					// Minor optimization by which we can break from the
+					// for loop if the logical OR result is true.
+					if(nestedEvalResult == true) {
+						break;
+					}
+				}
+			} // End of for loop.
+
+			// We can now add the consolidated result from this
+			// nested group to our interSubexpressionEvalResults list.
+			Functions::Collections::appendM(interSubexpressionEvalResults,
+				nestedEvalResult);
+			// We are done with this particular nested subexpression group.
+			// We can reset the important local variables we used for that.
+			subexpressionCntInCurrentNestedGroup = 0;
+			intraNestedSubexpressionLogicalOperator = "";
+			Functions::Collections::clearM(nestedSubexpressionEvalResults);
     	} // End of the for loop iterating over the subexpression map keys.
 
     	int32 numberOfEvalResults = Functions::Collections::size(interSubexpressionEvalResults);
@@ -5416,13 +6032,6 @@ namespace eval_predicate_functions {
 
     	// Starting from the second result, perform the cumulative
     	// logical operation of all the available results.
-    	// Currently, we don't support nested subexpressions.
-    	// So, all the logical operators are ensured to be of the same kind.
-    	// We ensured that during the expression validation phase in a different function.
-    	// When we start supporting nested subexpressions, the logic in this for loop
-    	// will have to change. For that matter, the entire logic in the
-    	// subexpression parsing, validation and evaluation functions will require
-    	// careful review and redesign at that time.
     	for(int i=1; i<numberOfEvalResults; i++) {
     		// Take the next inter subexpression logical operator.
     		rstring logicalOperator =
@@ -5431,13 +6040,27 @@ namespace eval_predicate_functions {
     		// Perform the inter subexpression logical operation.
     		if(logicalOperator == "&&") {
     			finalEvalResult = finalEvalResult && interSubexpressionEvalResults[i];
+
+    			// Minor optimization by which we can break from the
+    			// for loop if the logical AND result is false.
+    			if(finalEvalResult == false) {
+    				break;
+    			}
     		} else {
     			finalEvalResult = finalEvalResult || interSubexpressionEvalResults[i];
+
+    			// Minor optimization by which we can break from the
+    			// for loop if the logical OR result is true.
+    			if(finalEvalResult == true) {
+    				break;
+    			}
     		}
     	}
 
 		if(trace == true) {
 			cout << "==== BEGIN eval_predicate trace 4d ====" << endl;
+			cout << "Full expression=" << evalPlanPtr->getExpression() << endl;
+
 			cout <<  "Inter subexpression eval results list after evaluating the full expression." << endl;
 			ConstListIterator it1 = interSubexpressionEvalResults.getBeginIterator();
 
@@ -5447,6 +6070,21 @@ namespace eval_predicate_functions {
 				cout << myBoolean1 << endl;
 				it1++;
 			}
+
+			cout <<  "Intra nested subexpression logical operators map after evaluating the full expression." << endl;
+			SPL::list<rstring> nestedSubexpressionIds =
+				Functions::Collections::keys(evalPlanPtr->getIntraNestedSubexpressionLogicalOperatorsMap());
+			Functions::Collections::sortM(nestedSubexpressionIds);
+			int32 nestedSubexpressionIdsListSize =
+				Functions::Collections::size(nestedSubexpressionIds);
+
+			for(int32 i=0; i<nestedSubexpressionIdsListSize; i++) {
+				rstring idString = nestedSubexpressionIds[i];
+				rstring currentLogicalOperator =
+					evalPlanPtr->getIntraNestedSubexpressionLogicalOperatorsMap().at(idString);
+				cout << "Subexpression id=" << idString <<
+					", Logical operator=" << currentLogicalOperator << endl;
+			} // End of for loop.
 
 			cout <<  "Inter subexpression logical operators list after evaluating the full expression." << endl;
 			ConstListIterator it2 =
@@ -5468,15 +6106,17 @@ namespace eval_predicate_functions {
     // ====================================================================
 
     // ====================================================================
-    // This section contains several utility functions to fetch the
-    // value of a given tuple attribute as well as perform the logic
-    // for specific eval operations.
+    // This section contains several utility functions useful for
+    // validating and evaluating a given expression.
+    // They perform tasks such as the ones to fetch the value of
+    // a given tuple attribute, carry out specific eval operations,
+    // calculate subexpression id and more.
     //
     // This function returns the constant value handle of a given
     // attribute name present inside a given tuple.
     void getConstValueHandleForTupleAttribute(Tuple const & myTuple,
     	rstring attributeName, ConstValueHandle & cvh) {
-		// This attribue may be inside a nested tuple. So, let us parse and
+		// This attribute may be inside a nested tuple. So, let us parse and
 		// get all the nested tuple names that are separated by a period character.
 		SPL::list<rstring> attribTokens =
 			Functions::String::tokenize(attributeName, ".", false);
@@ -5764,11 +6404,256 @@ namespace eval_predicate_functions {
 		} else if(postArithmeticOperationVerb == ">=") {
 			subexpressionEvalResult = (arithmeticResult >= rhsValue) ? true : false;
 		} else {
-			// Unsupported post arithmentic operation verb.
+			// Unsupported post arithmetic operation verb.
 			error = INVALID_POST_ARITHMETIC_OPERATION_VERB_FOUND_DURING_EXP_EVAL;
 			subexpressionEvalResult = false;
 		}
 	} // End of performPostArithmeticEvalOperations
+
+	// This function creates the next subexpression id which is
+	// needed in the expression validation method.
+	// This function is always called after a subexpression got
+	// processed successfully. Depending on which stage the
+	// expression processing takes place, this function can get
+	// called from different sections in the expression validation method.
+	void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
+		rstring & subexpressionId) {
+		// Depending on the nested or non-nested nature,
+		// subexpression id will carry a different
+		// number value in a string variable.
+    	// e-g: "1.1", "2.1", "2.2", "2.3", "3.1", "4.1", "4.2", "4.3",
+		//      "4.4", "5.1", "5.2", "5.3", "6.1", "6.2", "7.1", "7.2"
+		//
+		// A few examples of zero, single and nested parenthesis.
+		//
+		// 1.1             2.1                 3.1           4.1
+		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
+		//
+		// 1.1                               2.1
+		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
+		//
+		// 1.1                2.1                   3.1             4.1
+		// (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+		//
+		// 1.1                          2.1                       2.2
+		// (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
+		//
+		// 1.1                 2.1                       2.2
+		// (a == "hi") && (b contains "xyz" && (g[4] > 6.7 || id % 8 == 3))
+		//
+		// 1.1                                 2.1
+		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
+		//
+		// 1.1                     2.1                 2.2
+		// (a == "hi") && ((b contains "xyz") || (g[4] > 6.7 || id % 8 == 3))
+		//
+		// 1.1                                        1.2                           2.1
+		// ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
+		//
+		// 1.1                                                                   1.2                          1.3
+		// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
+		//
+		if(subexpressionId == "") {
+			// This is the very first subexpression that got
+			// processed within this expression. So, we only
+			// need to initialize it to the starting subexpression id.
+			subexpressionId = "1.1";
+			return;
+		}
+
+		SPL::list<rstring> tokens =
+			Functions::String::tokenize(subexpressionId, ".", false);
+		subexpressionId = "";
+
+		// We are going to take care of the following three conditions in the
+		// first half of the if block below.
+		// 1) If we have an expression with zero open and close parenthesis,
+		// then we will have the subexpression id as 1.1, 2.1, 3.1 and so on.
+		// It is a non-nested subexpression with current nested level set to 0.
+		// Refer to the first example expression above.
+		//
+		// 2) If we have an expression with single level non-nested
+		// open and close parenthesis, then we will have the
+		// subexpression id as 1.1, 2.1, 3.1 and so on.
+		// In the non-nested case, the number of open and close
+		// parenthesis will be the same after a subexpression is processed.
+		// It is a non-nested subexpression with current nested level set to 0.
+		// Refer to the second and third example expressions above.
+		//
+		// 3) If we are here because of the open and close parenthesis not
+		// being the same, that means this is the nested case.
+		// If the current nested subexpression level is 1, that means
+		// this is a fresh beginning of a nested subexpression.
+		// In that case, we will increment at level 1 and then set
+		// the level 2 to 1.
+		// Refer to example expressions 4 to 9 above.
+		//
+		if(currentNestedSubexpressionLevel <= 1){
+			// For these three conditions, it is
+			// sufficient to increment only at level 1.
+			int32 value = atoi(tokens[0].c_str());
+			value++;
+			// Store it back as a string.
+			ostringstream valueString;
+			valueString << value;
+			subexpressionId = valueString.str();
+			// In this case, we will always set the level 2 value to "1".
+			subexpressionId += ".1";
+		} else {
+			// This is a nested subexpression that is after its
+			// fresh beginning. So, we will increment only at level 2.
+			// Let us keep the existing value at level 1.
+			subexpressionId = tokens[0];
+			int32 value = atoi(tokens[1].c_str());
+			value++;
+			// Store it back as a string.
+			ostringstream valueString;
+			valueString << value;
+			subexpressionId += "." + valueString.str();
+		}
+	} // End of getNextSubexpressionId
+
+	// This function checks if the next non-space character is
+	// an open parenthesis.
+	boolean isNextNonSpaceCharacterOpenParenthesis(blob const & myBlob,
+		int32 const & idx, int32 const & stringLength) {
+		for(int32 i=idx; i<stringLength-1; i++) {
+			if(myBlob[i+1] == ' ') {
+				// Skip all space characters that are there before
+				// we can see a non-space character.
+				continue;
+			}
+
+			if(myBlob[i+1] == '(') {
+				// Next non-space character is an open parenthesis.
+				return(true);
+			} else {
+				return(false);
+			}
+		}
+
+		return(false);
+	} // End of isNextNonSpaceCharacterOpenParenthesis
+
+	// This function is called from the expression validation
+	// function when processing an open parenthesis.
+	// It checks if the current single subexpression is
+	// enclosed within a parenthesis.
+	// e-g: (b contains "xyz")
+	boolean isThisAnEnclosedSingleSubexpression(rstring const & expr,
+		int32 const & idx) {
+		// We have to find if a close parenthesis comes before or
+		// after a possible logical operator. If it comes before,
+		// then this is an enclosed single subexpression.
+		int32 idx1 = Functions::String::findFirst(expr, ")", idx);
+
+		if(idx1 == -1) {
+			// Close parenthesis not found.
+			return(false);
+		}
+
+		int32 idx2 = -1;
+		// Find a logical OR.
+		idx2 = Functions::String::findFirst(expr, "||", idx);
+
+		if(idx2 == -1) {
+			// There is no logical OR. See if we can find a logical AND.
+			idx2 = Functions::String::findFirst(expr, "&&", idx);
+
+			if(idx2 == -1) {
+				// There is no logical AND.
+				// That means, this is an enclosed single subexpression.
+				return(true);
+			}
+		}
+
+		// If a close parenthesis appears before a logical operator,
+		// then this is an enclosed single subexpression.
+		if(idx1 < idx2) {
+			return(true);
+		} else {
+			return(false);
+		}
+	} // End of isThisAnEnclosedSingleSubexpression.
+
+	// This function checks if the next non-space character is
+	// a close parenthesis.
+	boolean isNextNonSpaceCharacterCloseParenthesis(blob const & myBlob,
+		int32 const & idx, int32 const & stringLength) {
+		for(int32 i=idx; i<stringLength-1; i++) {
+			if(myBlob[i+1] == ' ') {
+				// Skip all space characters that are there before
+				// we can see a non-space character.
+				continue;
+			}
+
+			if(myBlob[i+1] == ')') {
+				// Next non-space character is a close parenthesis.
+				return(true);
+			} else {
+				return(false);
+			}
+		}
+
+		return(false);
+	} // End of isNextNonSpaceCharacterCloseParenthesis
+
+	// This function checks if the given subexpression id is
+	// in a nested group. If it is, then it gets the
+	// relevant details such as the number of subexpressions
+	// in that group and the intra nested subexpression logical operator.
+	void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
+		SPL::list<rstring> const & subexpressionIdsList,
+		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
+		int32 & subexpressionCntInCurrentNestedGroup,
+		rstring & intraNestedSubexpressionLogicalOperator) {
+		// This function is called from the evaluateExpression method.
+		// Since all the subexpression ids in a nested group will
+		// appear in a sequential (sorted) order, this function can be called
+		// only once per nested group to get the important details needed for
+		// evaluating them together.
+		subexpressionCntInCurrentNestedGroup = 0;
+		intraNestedSubexpressionLogicalOperator = "";
+
+		// Let us check if the given subexpression id is in a nested group.
+		// e-g: 2.1, 2.2, 2.3  They all carry the same level 1.
+		SPL::list<rstring> tokens1 =
+			Functions::String::tokenize(subexpressionId, ".", false);
+		// We have to compare only at level 1 of the subexpression id.
+		// e-g: 2.4  Here, level 1 is 2 and level 2 is 4.
+		int32 myId = atoi(tokens1[0].c_str());
+		int32 subexpressionIdsListSize =
+			Functions::Collections::size(subexpressionIdsList);
+
+		for(int32 i=0; i<subexpressionIdsListSize; i++) {
+			rstring idString = subexpressionIdsList[i];
+			SPL::list<rstring> tokens2 =
+				Functions::String::tokenize(idString, ".", false);
+			// We have to compare only at level 1 of the subexpression id.
+			// e-g: 2.4  Here, level 1 is 2 and level 2 is 4.
+			int32 currentId = atoi(tokens2[0].c_str());
+
+			if(currentId == myId) {
+				// We have a match. This could be part of the same nested group.
+				subexpressionCntInCurrentNestedGroup++;
+			}
+		} // End of for loop.
+
+		// If we only find more than one entry with the
+		// same level 1, then that is considered to be in
+		// a nested group.
+		if(subexpressionCntInCurrentNestedGroup > 1) {
+			// It is sufficient to get only one of this logical operator.
+			// Because at the time of validation, we already verified that
+			// they are all of the same kind within a given nested group.
+			intraNestedSubexpressionLogicalOperator =
+				intraNestedSubexpressionLogicalOperatorsMap.at(subexpressionId);
+		} else {
+			// This one is not in a nested group. So set it to 0.
+			subexpressionCntInCurrentNestedGroup = 0;
+		}
+	} // End of getNestedSubexpressionGroupInfo
+
     // ====================================================================
 } // End of namespace eval_predicate_functions
 // ====================================================================

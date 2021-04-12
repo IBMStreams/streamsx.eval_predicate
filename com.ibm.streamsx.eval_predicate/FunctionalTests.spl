@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/05/2021
+Last modified on: Apr/11/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -67,7 +67,7 @@ composite FunctionalTests {
 		Ticker_t = rstring symbol, float32 price, uint32 quantity, 
 			boolean buyOrSell, map<boolean, int32> myMap1;		
 
-		// 2) A made up arbitrary schema with multi-level types and  
+		// 2) A made up arbitrary schema with multilevel types and  
 		// nesting that includes primitive and collection data types such as 
 		// sets, lists and maps. Main idea here is to have tuple types that can 
 		// include all the SPL typed attributes needed for testing the 
@@ -5993,6 +5993,80 @@ composite FunctionalTests {
 							printStringLn("Testcase A50.1 (" + (rstring)cnt + "): Evaluation execution failed. Error=" + (rstring)error);
 						}
 					} // End of while loop.
+					// -------------------------
+					
+					// A51.1 (Nested expression pattern 1)
+					_rule = "(a.transport.plane.airliner == 'Boeing') && ((a.transport.plane.isBasedInUSA == true || a.transport.plane.numberOfPlants == 18) && a.transport.plane.startingYear   ==   1916  )  ";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.2 (Nested expression pattern 2)
+					_rule = "(   b.digital.sw.productNameToGuid   contains   'Streams'   ) && (  b.digital.sw.productNameToRevenue  [ 'Star DB']   >=   862348922.45   && (a.rack.hw.estimatedPrice[1] == 398.12 || a.transport.cars.autoMaker endsWith 'errari'))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.3 (Nested expression pattern 3)
+					_rule = "(c.reals.fw.l[28.95] >= 27) && ((c.reals.fw.m[36.17] != 37) || (c.reals.fw.n[34.72] + 5 >= 38) || (c.reals.fw.o[40.27] - 12 == 27))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.4 (Nested expression pattern 4)
+					_rule = "(a.transport.cars.models contains 'Tributo') && ((a.transport.cars.secondsForZeroToSixty notContains 14.6) || (a.rack.hw.processorFamily[1] != 'Broadwell' || a.rack.hw.revenueTarget contains 12482031823.95))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.4: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.5 (Nested expression pattern 5)
+					_rule = "((c.reals.fw.p[45.56] < 53.79 || c.reals.fw.q[51.12] % 52.63 == 0.0) && (c.reals.fw.r contains 55.37)) || (c.reals.fw.s notContains 62.37 || testId == 'Happy Path')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.5: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.5: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.5: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.6 (Nested expression pattern 6)
+					_rule = "(((b.digital.sw.productNameToGuid['You Chat'] notStartsWith '4345-8fd3-72550428159e') || (b.integers.iw.k[41] == 42.65) || (c.reals.fw.p[45.56] > 42.93) || (c.reals.fw.s[61.28] - 2.37 == 60.00)) && ((a.transport.cars.rpmRange contains 8700) && (b.digital.sw.productNameToRevenue['Streams'] == 945438131.84) && (a.rack.hw.vendor == 'Intel')) && a.transport.plane.startingYear == 1916)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.6: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.6: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.6: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the HappyPathSink operator.
 		
@@ -7142,6 +7216,19 @@ composite FunctionalTests {
 						printStringLn("Testcase B77.1: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase B77.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
+
+					// B78.1 (MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS 115)
+					_rule = "(((b.digital.sw.productNameToGuid['You Chat'] notStartsWith '4345-8fd3-72550428159e') || (b.integers.iw.k[41] == 42.65) || (c.reals.fw.p[45.56] > 42.93) || (c.reals.fw.s[61.28] - 2.37 == 60.00)) || ((a.transport.cars.rpmRange contains 8700) && (b.digital.sw.productNameToRevenue['Streams'] == 945438131.84) && (a.rack.hw.vendor == 'Intel')) && a.transport.plane.startingYear == 1916)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B78.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B78.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B78.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.
