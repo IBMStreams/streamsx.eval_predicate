@@ -2,7 +2,7 @@
 
 ## v1.0.2
 * Apr/15/2021
-* Added support for the use of list<TUPLE> in a rule expression.
+* Added support for the use of list of TUPLE in a rule expression.
 
 ## v1.0.1
 * Apr/12/2021
