@@ -36,7 +36,7 @@ issue in the IBMStreams GitHub or contact the author of this toolkit.
 
 boolean, int32, uint32, int64, uint64, float32, float64, rstring,
 set<int32>, set<int64>, set<float32>, set<float64>, set<rstring>,
-list<int32>, list<int64>, list<float32>, list<float64>, list<rstring>,
+list<int32>, list<int64>, list<float32>, list<float64>, list<rstring>, list<TUPLE>,
 map<rstring,int32>, map<int32,rstring>, map<rstring,int64>, map<int64,rstring>,
 map<rstring,float32>, map<float32,rstring>, map<rstring,float64>,
 map<float64,rstring>, map<rstring,rstring>, map<int32,int32>, map<int32,int64>,
@@ -90,7 +90,7 @@ This toolkit's GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
 
 First created on: Mar/05/2021
-Last modified on: Apr/12/2021
+Last modified on: Apr/15/2021
 ============================================================
 */
 #ifndef FUNCTIONS_H_
@@ -228,6 +228,12 @@ Last modified on: Apr/12/2021
 #define EMPTY_SUB_EXP_LAYOUT_LIST_DURING_EVAL 113
 #define LHS_ATTRIB_NAME_STOPS_ABRUPTLY_AT_THE_END_OF_THE_EXPRESSION 114
 #define MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS 115
+#define MISSING_TWO_CLOSE_ANGLE_BRACKETS_AFTER_LIST_OF_TUPLE 116
+#define OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE 117
+#define ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALIDATION 118
+#define NO_PERIOD_FOUND_AFTER_LIST_OF_TUPLE 119
+#define ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_EVALUATION 120
+#define EXP_EVAL_PLAN_OBJECT_CREATION_ERROR_FOR_LIST_OF_TUPLE 121
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -351,7 +357,7 @@ namespace eval_predicate_functions {
 		SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
 		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
 		SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
-		int32 & error, boolean trace);
+		int32 & error, int32 & validationStartIdx, boolean trace);
     // Evaluate the expression according to the predefined plan.
     boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
     	Tuple const & myTuple, int32 & error, boolean trace);
@@ -597,11 +603,14 @@ namespace eval_predicate_functions {
 			// how it is tied to the tuple attributes and what operations
 			// need to be performed later while evaluating the expression.
 			SPLAPPTRC(L_TRACE, "Begin timing measurement 3", "ExpressionValidator");
+			// Perform the validation from the beginning of
+			// the expression starting at index 0.
+			int32 validationStartIdx = 0;
 			result = validateExpression(expr, tupleAttributesMap,
 				subexpressionsMap,
 				intraNestedSubexpressionLogicalOperatorsMap,
 				interSubexpressionLogicalOperatorsList,
-				error, trace);
+				error, validationStartIdx, trace);
 			SPLAPPTRC(L_TRACE, "End timing measurement 3", "ExpressionValidator");
 
 			if(result == false) {
@@ -664,6 +673,7 @@ namespace eval_predicate_functions {
 	    // We have a valid iterator from the eval plan cache for the given expression.
 	    // We can go ahead execute the evaluation plan now.
 	    SPLAPPTRC(L_TRACE, "Begin timing measurement 4", "ExpressionEvaluation");
+	    // We are making a non-recursive call.
 	    result = evaluateExpression(it->second, myTuple, error, trace);
 	    SPLAPPTRC(L_TRACE, "End timing measurement 4", "ExpressionEvaluation");
 
@@ -883,7 +893,7 @@ namespace eval_predicate_functions {
 		//
     	if(trace == true) {
     		cout << "==== BEGIN eval_predicate trace 3a ====" << endl;
-			cout << "myTuple=" << myTupleSchema << endl;
+			cout << "myTupleSchema=" << myTupleSchema << endl;
 			cout << "==== END eval_predicate trace 3a ====" << endl;
     	}
 
@@ -1023,9 +1033,43 @@ namespace eval_predicate_functions {
     		// e-g: list<rstring> businesses>
     		// e-g: map<rstring,int32> housingNumbers>
     		// e-g: map<rstring,rstring> officials,
+    		// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList,
+    		// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList>
     		// We are looking for the type followed by a space followed by the
     		// attribute name followed by either a comma or a close angle bracket.
-    		int idx2 = Functions::String::findFirst(myTupleSchema, " ", idx);
+    		//
+    		// (OR)
+    		//
+    		// In the case of a list of tuple shown above, we have to look for
+    		// the type ending with ">> " followed by the attribute name
+    		// followed by either a comma or a close angle bracket.
+    		//
+    		// The list of tuple is obviously more complex. So, let us see
+    		// if a given attribute is of that kind first. If not, we will do
+    		// the parsing for the other SPL built-in data types described above.
+    		int idx2 = -1;
+
+    		if(Functions::String::findFirst(myTupleSchema, "list<tuple<", idx) == idx) {
+    			// This is a list<TUPLE>. Let us see if it terminates with ">> ".
+    			idx2 = Functions::String::findFirst(myTupleSchema, ">> ", idx);
+
+    			if(idx2 == -1) {
+    				// There is no >> at the end of a list of tuple.
+    				error = MISSING_TWO_CLOSE_ANGLE_BRACKETS_AFTER_LIST_OF_TUPLE;
+    				return(false);
+    			}
+    		}
+
+    		// We can tolerate the absence of a list<TUPLE> attribute.
+    		if(idx2 == -1) {
+    			// Look for an other kind of SPL built-in data type which is more common.
+    			idx2 = Functions::String::findFirst(myTupleSchema, " ", idx);
+    		} else {
+    			// We found a list of tuple.
+    			// Move idx2 to the location of the space character by
+    			// going past the two angle brackets.
+    			idx2 += 2;
+    		}
 
     		if(idx2 == -1) {
     			error = MISSING_SPACE_BEFORE_TUPLE_ATTRIBUTE_NAME;
@@ -1051,7 +1095,9 @@ namespace eval_predicate_functions {
     			idx2 = idx3;
     		}
 
-    		// Consider whichever comes first after the tuple attribute name.
+    		// If both a comma and a close angle bracket are found anywhere
+    		// in the remaining portion of the tuple schema being searched,
+    		// then consider whichever comes first after the tuple attribute name.
     		if((idx3 != -1) && (idx3 < idx2)) {
     			idx2 = idx3;
     		}
@@ -1136,7 +1182,7 @@ namespace eval_predicate_functions {
 
 		// Let us now look deep inside of this tuple and trace its
 		// attribute names and values.
-    	// Get the keys of our map into a list. These keys represemt the
+    	// Get the keys of our map into a list. These keys represent the
     	// fully qualified attribute names present in the user provided tuple.
     	SPL::list<rstring> attribList = Functions::Collections::keys(tupleAttributesMap);
 
@@ -1613,9 +1659,70 @@ namespace eval_predicate_functions {
 						", " << myFloat64Float64.second << endl;
 					it++;
 				}
+			} else if(Functions::String::findFirst(
+				tupleAttributesMap[attribList[i]], "list<tuple<") == 0) {
+				// We have a list of tuple. This list doesn't hold
+				// items that are made of well defined SPL built-in data types.
+				// Instead, it holds a user defined Tuple type. So, we can't
+				// adopt the technique we used in the other else blocks above
+				// to assign cvh to a variable such as SPL::list<rstring>.
+				// We must use the C++ interface type SPL::List that the
+				// SPL::list is based on.
+				// The line below shows an example of an attribute type (schema)
+				// followed by an attribute name.
+				// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList
+    			SPL::List const & myListTuple = cvh;
+    			ConstListIterator it = myListTuple.getBeginIterator();
+
+				// Use of "lot" in the local variable names below means List Of Tuple.
+    			while (it != myListTuple.getEndIterator()) {
+    				ConstValueHandle myVal = *it;
+    				Tuple const & lotTuple = myVal;
+
+    				// We can now get the attributes present inside this tuple.
+    				//
+    				int32 lotSchemaLength =
+    					Functions::String::length(tupleAttributesMap[attribList[i]]);
+
+    				// Get just the tuple<...> part from this attribute's type.
+    				// We have to skip the initial "list<" portion in the type string.
+    				// We also have to skip the final > in the type string that
+    				// is a closure for "list<" i.e. we start from the
+    				// zero based index 5 and take the substring until the
+    				// end except for the final > which in total is 6 characters
+    				// less than the length of the entire type string.
+    				rstring lotTupleSchema =
+    					Functions::String::substring(
+    					tupleAttributesMap[attribList[i]],
+						5, lotSchemaLength-6);
+    				SPL::map<rstring, rstring> lotTupleAttributesMap;
+    				int32 lotError = 0;
+    				boolean lotResult = parseTupleAttributes(lotTupleSchema,
+    					lotTupleAttributesMap, lotError, trace);
+
+    				if(lotResult == false) {
+    					cout << "It failed to get the list<TUPLE> attributes for " <<
+    						attribList[i] << ". Error=" << lotError <<
+							". Tuple schema=" << lotTupleSchema << endl;
+    				} else {
+    					// We got the LOT tuple attributes.
+    					// We can recursively call the current
+    					// method that we are in now to trace the tuple attributes.
+    					cout << "BEGIN Recursive trace tuple attributes call for list<TUPLE> " <<
+    						attribList[i] << "." << endl;
+    					traceTupleAtttributeNamesAndValues(lotTuple,
+    						lotTupleAttributesMap, trace);
+    					cout << "END Recursive trace tuple attributes call for list<TUPLE> " <<
+    						attribList[i] << "." << endl;
+    				}
+
+    				it++;
+    			}
 			} else {
 				cout << "Skipping the trace for an unsupported attribute " <<
-					"type in the tuple: " << tupleAttributesMap[attribList[i]] << endl;
+					"type in the tuple: Attribute Name=" <<
+					attribList[i] << ", Attribute Type=" <<
+					tupleAttributesMap[attribList[i]] << endl;
 			}
     	} // End of the for loop.
 
@@ -1656,22 +1763,55 @@ namespace eval_predicate_functions {
     	SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
 		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
     	SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
-    	int32 & error, boolean trace=false) {
+    	int32 & error, int32 & validationStartIdx, boolean trace=false) {
     	error = ALL_CLEAR;
 
-    	// This function will do its work and keep populating the
+    	// This method will do its work and keep populating the
     	// subexpressions layout map and the inter subexpression logical
     	// operator list which were passed as input reference arguments.
     	//
+    	// This method will get called recursively when a list<TUPLE> is
+    	// encountered in a given expression. In that case, the validationStartIdx
+    	// method argument will tell us where to start the validation from.
+    	// In a non-recursive call into this method, validationStartIdx is
+    	// set to 0 to start the validation from the beginning of the expression.
+    	// It is important to note that the recursive caller must always pass
+    	// its own newly formed local variables as method arguments here so as
+    	// not to overwrite the original reference pointers passed by the
+    	// very first caller who made the initial non-recursive call.
+    	//
+    	// When evaluating a subexpression involving a list<TUPLE>, our
+    	// evaluation method available later in this file will also call this
+    	// validation method in a non-recursive manner. Since it has to
+    	// evaluate only that single subexpression, it will only send that
+    	// single subexpression string on its own starting at index 0.
+    	// That method will set the validationStartIdx to 0. That is perfectly
+    	// fine for doing an one shot single subexpression validation.
+    	// The main purpose there is to build the subexpression layout list for
+    	// that subexpression involving a list<TUPLE> as that is a
+    	// key component for doing the evaluation.
+    	//
+    	// So, there is nothing to be concerned about the way this method will get
+    	// called in a few special ways as explained above in those two paragraphs.
+    	//
     	// Get a blob representation of the expression.
     	SPL::blob myBlob = Functions::String::convertToBlob(expr);
-
-    	// At first, let us match all the parentheses and the square brackets.
-    	stack <uint8> st;
     	int32 stringLength = Functions::String::length(expr);
     	uint8 currentChar = 0, previousChar = 0;
+    	stack <uint8> st;
 
+    	// At first, let us match all the parentheses and the square brackets.
     	for(int i=0; i<stringLength; i++) {
+        	// We can skip this check if this method is being called recursively.
+        	// Because during the very first non-recursive call, this
+        	// parenthesis matching logic would have already been performed.
+    		// There is no point in doing it during a recursive call which will
+    		// force the validation to start from an arbitrary position in the
+    		// expression that is not conducive for this check.
+    		if(validationStartIdx > 0) {
+    			break;
+    		}
+
     		currentChar = myBlob[i];
     		// We can only allow certain characters in the expression.
     		// It should be any character from ASCII 20 to 126.
@@ -1903,6 +2043,13 @@ namespace eval_predicate_functions {
 		c5) Set the currentNestedSubexpressionLevel = 0.
     	*********************************************************
     	*/
+
+    	// If this method is being called recursively, we can
+    	// directly go to validate the subexpression to which
+    	// the caller must have set the validation start index.
+    	if(validationStartIdx > 0) {
+    		idx = validationStartIdx;
+    	}
 
     	// Stay in this loop and validate lhs, rhs, logical operators etc. and
     	// keep building the expression evaluation map structure which will be
@@ -2317,8 +2464,15 @@ namespace eval_predicate_functions {
 						// Move the idx past the end of the matching attribute name.
 						idx += Functions::String::length(lhsAttribName);
 
+						// If we have a list, it can be for list of
+						// SPL built-in data types or for list<TUPLE>.
+						// We will process both of them here.
+						// If it is a list<TUPLE>, then we will do additional
+						// validation of the attribute access inside of
+						// that tuple in a different code block outside of
+						// this if block.
 						if(Functions::String::findFirst(lhsAttribType, "list") == 0) {
-							// It is a list. We must ensure that it has [n] following it.
+							// We must ensure that it has [n] following it.
 							// The next character we find must be open square bracket [.
 							boolean openSquareBracketFound = false;
 
@@ -2334,6 +2488,13 @@ namespace eval_predicate_functions {
 									// A non-space or non-[ character found which is
 									// valid when the following operation verb is
 									// either contains or notContains. If not, it is not valid.
+									// This condition here is allowed only for a list of
+									// SPL built-in data types and not for a list<TUPLE>.
+									if(Functions::String::findFirst(lhsAttribType, "list<tuple<") == 0) {
+										error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE;
+										return(false);
+									}
+
 									break;
 								}
 
@@ -2343,9 +2504,11 @@ namespace eval_predicate_functions {
 							if(openSquareBracketFound == false) {
 								// A list attribute with no [ is valid only if the
 								// following operation verb is either contains or
-								// notContains.
-								if(Functions::String::findFirst(expr, "contains", idx) == idx ||
-									Functions::String::findFirst(expr, "notContains", idx) == idx) {
+								// notContains. This is permitted only for a list of
+								// SPL built-in data types and not for list<TUPLE>
+								if((Functions::String::findFirst(lhsAttribType, "list<tuple<") == -1) &&
+									(Functions::String::findFirst(expr, "contains", idx) == idx ||
+									Functions::String::findFirst(expr, "notContains", idx) == idx)) {
 									// This is allowed. We can break out of the while loop that is
 									// iterating over the tuple attributes map.
 									// We have no list index value in this case.
@@ -2436,6 +2599,145 @@ namespace eval_predicate_functions {
 								listIndexValue);
 							lhsSubscriptForListAndMapAdded = true;
 						} // End of if block checking list attribute's [n]
+
+						// If it is a list<TUPLE>, let us now do additional
+						// validation for the attribute access within the
+						// tuple held inside a given list.
+						// e-g: Body.MachineStatus.ComponentList[0].Component["MapKey"] == "MapValue"
+						if(Functions::String::findFirst(lhsAttribType, "list<tuple<") == 0) {
+							// This must be a . i.e. period character to indicate that a
+							// tuple attribute access is being made.
+							if(idx < stringLength && myBlob[idx] != '.') {
+								// No period found for tuple attribute access.
+								error = NO_PERIOD_FOUND_AFTER_LIST_OF_TUPLE;
+								return(false);
+							}
+
+							// Move past the period character.
+							idx++;
+
+							// Use of "lot" in the local variable names below means List Of Tuple.
+		    				// We can now get the attributes of the tuple held
+							// inside a list<TUPLE>.
+		    				//
+		    				int32 lotSchemaLength =
+		    					Functions::String::length(lhsAttribType);
+
+		    				// Get the tuple<...> part from this attribute's type.
+		    				// We have to skip the initial "list<" portion in the type string.
+		    				// We also have to skip the final > in the type string that
+		    				// is a closure for "list<" i.e. we start from the
+		    				// zero based index 5 and take the substring until the
+		    				// end except for the final > which in total is 6 characters
+		    				// less than the entire type string.
+		    				rstring lotTupleSchema =
+		    					Functions::String::substring(lhsAttribType,
+								5, lotSchemaLength-6);
+		    				SPL::map<rstring, rstring> lotTupleAttributesMap;
+		    				int32 lotError = 0;
+		    				boolean lotResult = parseTupleAttributes(lotTupleSchema,
+		    					lotTupleAttributesMap, lotError, trace);
+
+		    				if(lotResult == false) {
+		    					// This error should never happen since we
+		    					// already passed this check even before
+		    					// coming into this validation method.
+		    					// We are simply doing it here as a safety measure.
+		    					error = ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALIDATION;
+
+		    					if(trace == true) {
+			    					cout << "It failed to get the list<TUPLE> attributes for " <<
+			    						lhsAttribName <<
+										" during expression validation. Error=" << lotError <<
+										". Tuple schema=" << lotTupleSchema << endl;
+		    					}
+
+		    					return(false);
+		    				}
+
+							// We got the LOT tuple attributes.
+							// We can recursively call the current
+							// method that we are in now to validate the
+							// tuple attribute access involving a list<TUPLE>.
+							if(trace == true) {
+								cout << "BEGIN Recursive validate expression call for list<TUPLE> " <<
+									lhsAttribName << "." << endl;
+							}
+
+							SPL::map<rstring, SPL::list<rstring> > lotSubexpressionsMap;
+							SPL::map<rstring, rstring> lotIntraNestedSubexpressionLogicalOperatorsMap;
+							SPL::list<rstring> lotInterSubexpressionLogicalOperatorsList;
+							// It is a recursive call. So, we can tell this method to
+							// start the validation at a specific position in the
+							// expression instead of from index 0. It can be done by
+							// setting the following variable to a non-zero value.
+							validationStartIdx = idx;
+							// We will also store the index where the
+							// subexpression involving a list<TUPLE> starts for another
+							// use at the end of this additional processing we are
+							// doing here for a list<TUPLE>.
+							int32 lotExpressionStartIdx = idx;
+							lotResult = validateExpression(expr, lotTupleAttributesMap,
+								lotSubexpressionsMap, lotIntraNestedSubexpressionLogicalOperatorsMap,
+								lotInterSubexpressionLogicalOperatorsList, error,
+								validationStartIdx, trace);
+
+							if(trace == true) {
+								cout << "END Recursive validate expression call for list<TUPLE> " <<
+									lhsAttribName << "." << endl;
+							}
+
+							if(lotResult == false) {
+								// There was a validation error in the recursive call.
+								return(false);
+							}
+
+							// Now that the recursive call is over, we can set idx to a
+							// position up to which the recursive call did the validation.
+							idx = validationStartIdx;
+							// We must reset it now.
+							validationStartIdx = 0;
+							// At this point, we correctly validated the
+							// subexpression involving a list<TUPLE>.
+							// In the recursive call we just returned back from,
+							// it has already successfully completed the
+							// validation for LHS, OperationVerb and RHS.
+							// So, we can set all of them as cleanly completed.
+			    			lhsFound = true;
+			    			operationVerbFound = true;
+			    			rhsFound = true;
+			    			//
+			    			// LHSAttribName
+			    			// LHSAttribType
+			    			// ListIndexOrMapKeyValue  - When N/A, it will have an empty string.
+			    			// OperationVerb - For arithmetic verbs, it will have extra stuff. e-g: % 8 ==
+			    			// RHSValue
+			    			// Intra subexpression logical operator - When N/A, it will have an empty string.
+			    			// ...   - The sequence above repeats for this subexpression.
+			    			//
+			    			// Just because this is a list<TUPLE>, we already
+			    			// appended a value for the list index entry of
+			    			// the subexpression layout list in the previous
+			    			// if code block for close bracket detection.
+			    			// Now, we can fill the lotExpressionStartIdx in
+			    			// the subexpression layout list for
+			    			// "operation verb" entry.
+			    			// In the "rhs value" entry, we will store the
+			    			// current idx position where LOT expression ends.
+			    			// These two values will be used later inside
+			    			// the evaluation function. This is so important for
+			    			// evaluating a subexpression involving a list<TUPLE>.
+			    			// Operation verb entry.
+					    	ostringstream lotExpStartIdx;
+					    	lotExpStartIdx << lotExpressionStartIdx;
+					    	rstring myValueString = lotExpStartIdx.str();
+							Functions::Collections::appendM(subexpressionLayoutList, myValueString);
+					    	// RHS entry.
+					    	ostringstream lotExpEndIdx;
+					    	lotExpEndIdx << idx;
+					    	myValueString = lotExpEndIdx.str();
+							Functions::Collections::appendM(subexpressionLayoutList, myValueString);
+						} // End of the additional validation for list<TUPLE>
 
 						if(Functions::String::findFirst(lhsAttribType, "map") == 0) {
 							// It is a map. We must ensure that it has a valid access scheme following it.
@@ -2754,7 +3056,6 @@ namespace eval_predicate_functions {
 							lhsSubscriptForListAndMapAdded = true;
 						} // End of if block checking map attribute's [key]
 
-
 						// We would not have added anything to the subexpression layout list after we added
 						// the attribute Name and attributeType if we encountered anything other than a
 						// list or map. In that case, we will add an empty string for
@@ -2785,6 +3086,7 @@ namespace eval_predicate_functions {
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 6a ====" << endl;
 					cout << "Full expression=" << expr << endl;
+					cout << "Validation start index=" << validationStartIdx << endl;
 					cout <<  "Subexpression layout list after validating an LHS." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -3334,6 +3636,7 @@ namespace eval_predicate_functions {
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 7a ====" << endl;
 					cout << "Full expression=" << expr << endl;
+					cout << "Validation start index=" << validationStartIdx << endl;
 					cout <<  "Subexpression layout list after validating an operation verb." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -3765,6 +4068,7 @@ namespace eval_predicate_functions {
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 8a ====" << endl;
 					cout << "Full expression=" << expr << endl;
+					cout << "Validation start index=" << validationStartIdx << endl;
 					cout <<  "Subexpression layout list after validating an RHS." << endl;
 	    			ConstListIterator it = subexpressionLayoutList.getBeginIterator();
 
@@ -3799,8 +4103,22 @@ namespace eval_predicate_functions {
 					cout << "==== END eval_predicate trace 8a ====" << endl;
 				} // End of if(trace == true)
 
-				// Continue the outer while loop.
-				continue;
+				// If we are on a recursive call to this method, it usually
+				// happens to validate only a subexpression that
+				// involves list<TUPLE>. When the LHS, OperationVerb and RHS are
+				// done for that recursive call, we can return instead of
+				// proceeding further.
+				if(validationStartIdx > 0) {
+					// It is necessary to set the validationStartIdx where
+					// we left off before returning from here. That will
+					// give the recursive caller a new position in the
+					// expression from where to continue further validation.
+					validationStartIdx = idx;
+					return(true);
+				} else {
+					// Continue the outer while loop.
+					continue;
+				}
     		} // End of if(lhsFound == true && operationVerbFound == true && rhsFound == false)
 
     		// If we have found an LHS, an operation verb and an RHS, we can now
@@ -3889,8 +4207,15 @@ namespace eval_predicate_functions {
     	    	// ...   - The sequence above repeats for this subexpression.
     	    	//
     			if(openParenthesisCnt != closeParenthesisCnt) {
-    				// Do a special step for assistance with the
+    				// Do a special step for assisting with the
     				// processing of nested subexpressions.
+    				// There are two either this or that conditions in this if block.
+    				// In my tests, I found out that the first condition itself
+    				// is sufficient. The second condition to check for the
+    				// presence of consecutive CP is redundant. At a later time,
+    				// we can test with more nested expressions to confirm this
+    				// and then remove the second condition altogether.
+    				// For now, having it here causes no harm.
     				if((currentNestedSubexpressionLevel > 0 && selolSize == 0) ||
     					(consecutiveCloseParenthesisFound == true)){
 						// Insert the logical operator value into a separate map where
@@ -3977,6 +4302,7 @@ namespace eval_predicate_functions {
 				if(trace == true) {
 					cout << "==== BEGIN eval_predicate trace 9a ====" << endl;
 					cout << "Full expression=" << expr << endl;
+					cout << "Validation start index=" << validationStartIdx << endl;
 					cout << "currentNestedSubexpressionLevel=" <<
 						currentNestedSubexpressionLevel << endl;
 					cout << "multiPartSubexpressionPartsCnt=" <<
@@ -4047,7 +4373,6 @@ namespace eval_predicate_functions {
 				// Continue the outer while loop.
 				continue;
     		} // End of if(lhsFound == true && operationVerbFound == true && rhsFound == true)
-
     	} // End of the outermost validation while loop.
 
     	if(openParenthesisCnt != closeParenthesisCnt) {
@@ -4095,6 +4420,7 @@ namespace eval_predicate_functions {
 			if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 10a ====" << endl;
 				cout << "Full expression=" << expr << endl;
+				cout << "Validation start index=" << validationStartIdx << endl;
 				cout << "currentNestedSubexpressionLevel=" <<
 					currentNestedSubexpressionLevel << endl;
 				cout << "multiPartSubexpressionPartsCnt=" <<
@@ -4270,10 +4596,16 @@ namespace eval_predicate_functions {
     // ====================================================================
 
     // ====================================================================
-    // This function receives the evaluation plan pointer as input and
+    // This method receives the evaluation plan pointer as input and
     // then runs the full evaluation of the associated expression.
     boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
     	Tuple const & myTuple, int32 & error, boolean trace=false) {
+    	// This method will get called recursively when a list<TUPLE> is
+    	// encountered in a given expression. It is important to note that
+    	// the recursive caller must always pass its own newly formed
+    	// local variables as method arguments here so as not to overwrite
+    	// the original reference pointers passed by the very first caller
+    	// who made the initial non-recursive call.
     	error = ALL_CLEAR;
     	int32 subexpressionCntInCurrentNestedGroup = 0;
     	rstring intraNestedSubexpressionLogicalOperator = "";
@@ -4425,7 +4757,7 @@ namespace eval_predicate_functions {
     		int32 loopCnt = 0;
     		int32 idx = 0;
 
-    		// Stay in a loop and evaluate every block available in the subexp layout list.
+    		// Stay in a loop and evaluate every block available in the subexpression layout list.
     		// We will run the evaluation on multiple dimensions (based on LHS attribute type,
     		// operation verb or a combination of those two. It is plenty of code below to
     		// cover all possible evaluations paths that we can support.
@@ -4487,7 +4819,7 @@ namespace eval_predicate_functions {
 
 				if(loopCnt == 1) {
 					// Record the logical operator used within this subexpression if any.
-					// They will be homogenous. So, it is sufficient to record only one of them.
+					// They will be homogeneous. So, it is sufficient to record only one of them.
 					intraSubexpressionLogicalOperatorInUse = intraSubexpressionLogicalOperator;
 				}
 
@@ -4510,7 +4842,7 @@ namespace eval_predicate_functions {
     				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
 
     				if(listIdx < 0 ||
-    					listIdx > Functions::Collections::size(myList) - 1) {
+    					listIdx > (Functions::Collections::size(myList) - 1)) {
     					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
     					return(false);
     				}
@@ -5177,7 +5509,7 @@ namespace eval_predicate_functions {
     				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
 
     				if(listIdx < 0 ||
-    					listIdx > Functions::Collections::size(myList) - 1) {
+    					listIdx > (Functions::Collections::size(myList) - 1)) {
     					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
     					return(false);
     				}
@@ -5203,7 +5535,7 @@ namespace eval_predicate_functions {
     				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
 
     				if(listIdx < 0 ||
-    					listIdx > Functions::Collections::size(myList) - 1) {
+    					listIdx > (Functions::Collections::size(myList) - 1)) {
     					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
     					return(false);
     				}
@@ -5229,7 +5561,7 @@ namespace eval_predicate_functions {
     				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
 
     				if(listIdx < 0 ||
-    					listIdx > Functions::Collections::size(myList) - 1) {
+    					listIdx > (Functions::Collections::size(myList) - 1)) {
     					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
     					return(false);
     				}
@@ -5255,7 +5587,7 @@ namespace eval_predicate_functions {
     				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
 
     				if(listIdx < 0 ||
-    					listIdx > Functions::Collections::size(myList) - 1) {
+    					listIdx > (Functions::Collections::size(myList) - 1)) {
     					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
     					return(false);
     				}
@@ -5889,7 +6221,213 @@ namespace eval_predicate_functions {
 						arithmeticOperandValue,
 						postArithmeticOperationVerb,
 						subexpressionEvalResult, error);
-        		}
+        		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0) {
+					// If it is a list<TUPLE>, this needs a special evaluation.
+					// e-g: Body.MachineStatus.ComponentList[0].Component["MapKey"] == "MapValue"
+    				// This list doesn't hold items that are made of
+        			// well defined SPL built-in data types.
+    				// Instead, it holds a user defined Tuple type. So, we can't
+    				// adopt the technique we used in the other else blocks above
+    				// to assign cvh to a variable such as SPL::list<rstring>.
+    				// We must use the C++ interface type SPL::List that the
+    				// SPL::list is based on.
+    				// The line below shows an example of an attribute type (schema)
+    				// followed by an attribute name.
+    				// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList
+        			SPL::List const & myListTuple = cvh;
+        			ConstListIterator it = myListTuple.getBeginIterator();
+
+        			// We have to look only for a tuple that is present in the
+        			// user specified list index. Let us first check if that
+        			// index is valid in a given list.
+        			int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+    				if(listIdx < 0 || listIdx > (myListTuple.getSize() - 1)) {
+    					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+    					return(false);
+    				}
+
+    				// Use of "lot" in the local variable names below means List Of Tuple.
+    				int32 lotIdx = -1;
+    				boolean lotResult = false;
+    				SPL::map<rstring, rstring> lotTupleAttributesMap;
+    				int32 lotError = 0;
+    				rstring lotTupleSchema = "";
+
+        			while (it != myListTuple.getEndIterator()) {
+        				// We have to evaluate only the tuple held in a
+        				// user given list index value in the expression.
+        				// Remaining list items can be skipped.
+        				lotIdx++;
+
+        				if(lotIdx != listIdx) {
+        					// Continue the while loop.
+        					it++;
+        					continue;
+        				}
+
+        				ConstValueHandle myVal = *it;
+        				Tuple const & lotTuple = myVal;
+
+        				// We can now get the attributes present inside this tuple.
+        				//
+        				int32 lotSchemaLength =
+        					Functions::String::length(lhsAttributeType);
+
+        				// Get just the tuple<...> part from this attribute's type.
+        				// We have to skip the initial "list<" portion in the type string.
+        				// We also have to skip the final > in the type string that
+        				// is a closure for "list<" i.e. we start from the
+        				// zero based index 5 and take the substring until the
+        				// end except for the final > which in total is 6 characters
+        				// less than the length of the entire type string.
+        				lotTupleSchema = Functions::String::substring(lhsAttributeType,
+        					5, lotSchemaLength-6);
+        				lotResult = parseTupleAttributes(lotTupleSchema,
+        					lotTupleAttributesMap, lotError, trace);
+
+        				if(lotResult == false) {
+        					// This error should never happen since we
+        					// already passed this check twice even before
+        					// coming into this evaluation method.
+        					// We are simply doing it here as a safety measure.
+        					error = ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_EVALUATION;
+
+        					if(trace == true) {
+    	    					cout << "It failed to get the list<TUPLE> attributes for " <<
+    	    						lhsAttributeName <<
+    								" during expression evaluation. Error=" << lotError <<
+    								". Tuple schema=" << lotTupleSchema << endl;
+        					}
+
+        					// Stop the evaluation of list<TUPLE> due to this rare error.
+        					break;
+        				}
+
+						// We got the LOT tuple attributes.
+        				// At this time, we have to get the subexpression map for
+        				// the subexpression involving a list<TUPLE>. Unlike we
+        				// normally do it in the validation method for the
+        				// SPL built-in data types based subexpressions,
+        				// we don't prepare it for a list<TUPLE> based
+        				// subexpression and save it ahead of time in the
+        				// expression cache. So, we now have to make a straight
+        				// non-recursive call to the the validation method which
+        				// will get us a subexpression map that we can use
+        				// here only once for evaluating a list<TUPLE> based
+        				// subexpression.
+        				//
+        				// We have to parse just a partial portion of the full
+        				// subexpression string that is stored in the expression cache.
+        				// In the normal expression validation step earlier,
+        				// we have stored the start index and end index for
+        				// that partial string portion we need below.
+        				// You can refer back to the validation method to see
+        				// how we store these two indices. In essence,
+        				// operationVerb and rhsValue entries of the SELOL
+        				// already contain these two numbers in the case of a list<TUPLE>.
+        				int32 startIdx = atoi(operationVerb.c_str());
+        				int32 endIdx = atoi(rhsValue.c_str());
+        				rstring lotSubexpression = evalPlanPtr->getExpression();
+        				// We can take a substring to get the
+        				// subexpression portion that we are interested in.
+        				lotSubexpression = Functions::String::substring(
+        					lotSubexpression, startIdx, (endIdx-startIdx+1));
+
+        				// In the LOT subexpression, we can't have any open or
+        				// close parenthesis. In a partially taken subexpression,
+        				// that situation will cause parenthesis mismatch and
+        				// it will get rejected in the validation method.
+        				// So, if the very last character of the substring is
+        				// a close parenthesis, we will remove it now.
+        				// In general, after and RHS value in a given
+        				// expression string, we usually have these possible
+        				// characters: nothing or space or )
+        				//
+        				int32 subexpLength = Functions::String::length(lotSubexpression);
+
+        				if(Functions::String::findFirst(lotSubexpression, ")",
+        					subexpLength-1) == subexpLength-1) {
+        					// We have to exclude the close parenthesis.
+        					lotSubexpression = Functions::String::substring(
+        						lotSubexpression, 0, subexpLength-1);
+        				}
+
+        				if(trace == true) {
+        					cout << "LOT subexpression in eval=" << lotSubexpression << endl;
+        				}
+
+						SPL::map<rstring, SPL::list<rstring> > lotSubexpressionsMap;
+						SPL::map<rstring, rstring> lotIntraNestedSubexpressionLogicalOperatorsMap;
+						SPL::list<rstring> lotInterSubexpressionLogicalOperatorsList;
+						// We are making a non-recursive call. So, set it to 0.
+						// i.e. start validating from index 0 of the
+						// subexpression string we created above using substring.
+						int32 validationStartIdx = 0;
+						lotResult = validateExpression(lotSubexpression, lotTupleAttributesMap,
+							lotSubexpressionsMap, lotIntraNestedSubexpressionLogicalOperatorsMap,
+							lotInterSubexpressionLogicalOperatorsList, error,
+							validationStartIdx, trace);
+
+						if(lotResult == false) {
+							// There was a validation error.
+							// This should be rare as we have done this successfully
+							// once already in the normal validation step earlier.
+							if(trace == true) {
+								cout << "LOT validation error in eval. Error=" << error << endl;
+							}
+
+							break;
+						}
+
+						// We can recursively call the current
+						// method that we are in now to evaluate the
+						// tuple attribute access involving a list<TUPLE>.
+						if(trace == true) {
+							cout << "BEGIN Recursive evaluate expression call for list<TUPLE> " <<
+								lhsAttributeName << "." << endl;
+						}
+
+						SPL::list<rstring> lotSubexpressionsMapKeys =
+							Functions::Collections::keys(lotSubexpressionsMap);
+						Functions::Collections::sortM(lotSubexpressionsMapKeys);
+
+						// We can now create a new eval plan for this
+						// special expression involving a list<TUPLE>.
+						ExpressionEvaluationPlan *lotEvalPlanPtr = NULL;
+						lotEvalPlanPtr = new ExpressionEvaluationPlan();
+
+						if(lotEvalPlanPtr == NULL) {
+							error = EXP_EVAL_PLAN_OBJECT_CREATION_ERROR_FOR_LIST_OF_TUPLE;
+							break;
+						}
+
+						// Let us take a copy of various data structures related to this
+						// fully validated expression in our eval plan cache for
+						// prolonged use by calling the setter methods of the cache object.
+						lotEvalPlanPtr->setExpression(lotSubexpression);
+						lotEvalPlanPtr->setTupleSchema(lotTupleSchema);
+						lotEvalPlanPtr->setSubexpressionsMap(lotSubexpressionsMap);
+						lotEvalPlanPtr->setSubexpressionsMapKeys(lotSubexpressionsMapKeys);
+						lotEvalPlanPtr->setIntraNestedSubexpressionLogicalOperatorsMap(
+							lotIntraNestedSubexpressionLogicalOperatorsMap);
+						lotEvalPlanPtr->setInterSubexpressionLogicalOperatorsList(
+							lotInterSubexpressionLogicalOperatorsList);
+
+						subexpressionEvalResult =
+							evaluateExpression(lotEvalPlanPtr, lotTuple, error, trace);
+
+						if(trace == true) {
+							cout << "END Recursive evaluate expression call for list<TUPLE> " <<
+								lhsAttributeName << "." << endl;
+						}
+
+        				// We are done evaluating the single tuple from this
+        				// list<TUPLE> that the user specified in the expression.
+						delete lotEvalPlanPtr;
+        				break;
+        			} // End of while loop
+        		} // End of the many if conditional blocks for different eval checks.
 
     			// Check the evaluation error status.
     			if(error != ALL_CLEAR) {

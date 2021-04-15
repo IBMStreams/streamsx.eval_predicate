@@ -75,7 +75,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
    e. No bitwise operations are supported at this time.
 
-5. It allows a rule expression that can refer to boolean, integer, float, string, set, list, map and other nested tuple attributes.
+5. It allows a rule expression that can refer to boolean, integer, float, string, set, list, map and other nested tuple attributes. In addition to having many built-in data types inside a collection, it allows list<TUPLE> by having user defined custom tuple data types inside a list.
 
 6. It allows certain level of subexpression chaining in a rule.
 

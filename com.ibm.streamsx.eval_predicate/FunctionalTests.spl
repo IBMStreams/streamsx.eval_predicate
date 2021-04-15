@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/11/2021
+Last modified on: Apr/15/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -67,7 +67,11 @@ composite FunctionalTests {
 		Ticker_t = rstring symbol, float32 price, uint32 quantity, 
 			boolean buyOrSell, map<boolean, int32> myMap1;		
 
-		// 2) A made up arbitrary schema with multilevel types and  
+		// 2) Another simple flat schema with no nesting.
+		Weather_t = rstring city, float64 humidity,
+			map<int64, float64> hourlyTemperatureMap, boolean sunnyDay;
+
+		// 3) A made up arbitrary schema with multilevel types and  
 		// nesting that includes primitive and collection data types such as 
 		// sets, lists and maps. Main idea here is to have tuple types that can 
 		// include all the SPL typed attributes needed for testing the 
@@ -115,10 +119,11 @@ composite FunctionalTests {
 			
 		GroupC_t = tuple<FloatWorld_t fw> reals;
 		
-		TestData_t = rstring testId, GroupA_t a, GroupB_t b, GroupC_t c;
+		TestData_t = rstring testId, GroupA_t a, 
+			GroupB_t b, GroupC_t c, list<Weather_t> weatherList;
 		
 	graph
-		// Kickstart this application with a dummy signal.
+		// Start this application with a dummy signal.
 		(stream<boolean dummy> Signal as S) as SignalGenerator = Beacon() {
 			param
 				iterations: 1;
@@ -141,6 +146,21 @@ composite FunctionalTests {
 					myTicker.myMap1 = {true:1, false:0};
 					// Send this tuple out.
 					submit(myTicker, MT);
+					// -------------------------
+					mutable Weather_t myWeather = {};
+					myWeather.city = "New York";
+					myWeather.humidity = 12.87;
+					insertM(myWeather.hourlyTemperatureMap,
+						333343l, 87.355);
+					insertM(myWeather.hourlyTemperatureMap,
+						443536l, 84.31);
+					insertM(myWeather.hourlyTemperatureMap,
+						592311l, 85.72);
+					insertM(myWeather.hourlyTemperatureMap,
+						693127l, 86.128);
+					insertM(myWeather.hourlyTemperatureMap,
+						729841l, 85.853);
+					myWeather.sunnyDay = true;
 					// -------------------------
 					// Create the comprehensive test data tuple now.
 					mutable TestData_t myTestData = {};
@@ -241,6 +261,8 @@ composite FunctionalTests {
 						{53.25 : (float32)54.85, 55.37 : (float32)56.29, 57.55 : (float32)58.48};
 					myTestData.c.reals.fw.s = 
 						{59.09 : 60.14, 61.28 : 62.37, 63.15 : 64.65};
+					// -------------------------
+					appendM(myTestData.weatherList, myWeather);
 					// -------------------------
 					// Send this tuple out.
 					submit(myTestData, MTD);
@@ -6067,6 +6089,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A51.6: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
+					
+					// A52.1 (list<TUPLE>)
+					_rule = "(((b.digital.sw.productNameToGuid['You Chat'] notStartsWith '4345-8fd3-72550428159e') || (weatherList[0].city contains 'York') || (weatherList[0].humidity <= 12.87) || (c.reals.fw.s[61.28] - 2.37 == 60.00)) && ((a.transport.cars.rpmRange contains 8700) && (b.digital.sw.productNameToRevenue['Streams'] == 945438131.84) && (weatherList[0].hourlyTemperatureMap[592311] != 89.16)) && weatherList[0].sunnyDay == true)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A52.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A52.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A52.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the HappyPathSink operator.
 		
@@ -6098,7 +6133,6 @@ composite FunctionalTests {
 					mutable boolean result = false;
 					printStringLn("");
 					printStringLn("");
-					
 					// Before we do anything here, we will do quick tests of
 					// the built-in evalPredicate native function available
 					// in the IBM Streams product to see where it works fine 
@@ -7229,6 +7263,32 @@ composite FunctionalTests {
 						printStringLn("Testcase B78.1: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase B78.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
+
+					// B79.1 (OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE 117)
+					_rule = "weatherList 0.city contains 'York'";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B79.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B79.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B79.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
+
+					// B80.1 (NO_PERIOD_FOUND_AFTER_LIST_OF_TUPLE 119)
+					_rule = "(weatherList[0] hourlyTemperatureMap[592311] != 89.16)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B80.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B80.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B80.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.

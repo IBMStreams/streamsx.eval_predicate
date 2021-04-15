@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Apr/11/2021
+Last modified on: Apr/15/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -51,7 +51,7 @@ issue in the IBMStreams GitHub or contact the author of this toolkit.
 
 boolean, int32, uint32, int64, uint64, float32, float64, rstring,
 set<int32>, set<int64>, set<float32>, set<float64>, set<rstring>,
-list<int32>, list<int64>, list<float32>, list<float64>, list<rstring>,
+list<int32>, list<int64>, list<float32>, list<float64>, list<rstring>, list<TUPLE>, 
 map<rstring,int32>, map<int32,rstring>, map<rstring,int64>, map<int64,rstring>,
 map<rstring,float32>, map<float32,rstring>, map<rstring,float64>,
 map<float64,rstring>, map<rstring,rstring>, map<int32,int32>, map<int32,int64>, 
@@ -128,7 +128,7 @@ composite EvalPredicateExample {
 		// evaluate different kinds of expressions.
 		//
 		// 1) A simple flat schema with no nesting.
-		Ticker_t = rstring symbol, float32 price, uint32 quantity, boolean buyOrSell;		
+		Ticker_t = rstring symbol, float32 price, uint32 quantity, boolean buyOrSell;
 
 		// 2) A schema with multilevel types with no nesting.
 		Person_t = rstring name, rstring title, 
@@ -146,9 +146,13 @@ composite EvalPredicateExample {
 		CityDetails_t = tuple<GeoCoords_t geo, CityInfo_t info> location, Weather_t weather;
 		City_t = rstring name, CityDetails_t details, Demography_t stats, 
 			int32 rank, list<int32> roadwayNumbers, map<rstring, int32> housingNumbers;
+
+		// 4) Another simple flat schema with no nesting.
+		AccuWeather_t = rstring city, float64 humidity,
+			map<int64, float64> hourlyTemperatureMap, boolean sunnyDay;
 			
 	graph
-		// Kickstart this application with a dummy signal.
+		// Start this application with a dummy signal.
 		(stream<boolean dummy> Signal as S) as SignalGenerator = Beacon() {
 			param
 				iterations: 1;
@@ -504,6 +508,50 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 3.12: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase 3.12: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// ============== TESTCASE GROUP 4 ============== 					
+					mutable AccuWeather_t myWeather = {};
+					myWeather.city = "New York";
+					myWeather.humidity = 12.87;
+					insertM(myWeather.hourlyTemperatureMap,
+						333343l, 87.355);
+					insertM(myWeather.hourlyTemperatureMap,
+						443536l, 84.31);
+					insertM(myWeather.hourlyTemperatureMap,
+						592311l, 85.72);
+					insertM(myWeather.hourlyTemperatureMap,
+						693127l, 86.128);
+					insertM(myWeather.hourlyTemperatureMap,
+						729841l, 85.853);
+					myWeather.sunnyDay = true;
+					
+					type AccuWeatherTestData_t = list<AccuWeather_t> weatherList;
+					mutable AccuWeatherTestData_t accuWeatherTestData = {};
+					appendM(accuWeatherTestData.weatherList, myWeather);
+					
+					// Evaluate an expression (i.e. rule).
+					// Arg1: Expression string i.e. your custom rule.
+					// Arg2: Your tuple
+					// Arg3: A mutable int32 variable to receive a non-zero eval error code if any.
+					//       (You can refer to top of the impl/include/eval_predicate.h file in the 
+					//        streamsx.eval_predicate toolkit for the meaning of a given error code.)
+					// Arg4: A boolean value to enable debug tracing inside this function.
+					// It returns true if the expression's evaluation criteria is met.
+					// It returns false and error=0 if the expression's evaluation criteria is not met.
+					// It returns a non-zero error when there is an evaluation execution failure.
+					//					
+					// 4.1
+					// Usage of list<TUPLE>
+					rule = "(((weatherList[0].sunnyDay == false) || (weatherList[0].city contains 'York') || (weatherList[0].humidity <= 12.87)) && ((weatherList[0].hourlyTemperatureMap[592311] != 89.16)) && weatherList[0].sunnyDay == true)";
+					result = eval_predicate(rule, accuWeatherTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 4.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 4.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 4.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
 				} // End of onTuple S
 		} // End of the Custom operator.
