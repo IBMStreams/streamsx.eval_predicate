@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Apr/15/2021
+Last modified on: Apr/18/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -33,16 +33,17 @@ given expression (rule) to access map elements.
 2) This new eval_predicate function allows the user
 given expression (rule) to access nested tuple attributes.
 
-3) This new eval_predicate function allows the user
-given expression (rule) to have operational verbs such as
-contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
+3) It supports these special operations for rstring, set, list and map:
+   contains, startsWith, endsWith, notContains, notStartsWith, 
+   notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 
 4) This new eval_predicate function supports the following operations.
 --> It supports these relational operations: ==, !=, <, <=, >, >=
 --> It supports these logical operations: ||, &&
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations: 
-    contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
+    contains, startsWith, endsWith, notContains, notStartsWith, 
+    notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -510,6 +511,20 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 3.12: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
+					// 3.13
+					// Size check for list<built-in type>.
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					rule = "(roadwayNumbers sizeGE 6 && roadwayNumbers[5] == 117)";
+					result = eval_predicate(rule, myCity, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 3.13: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 3.13: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 3.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
 					// ============== TESTCASE GROUP 4 ============== 					
 					mutable AccuWeather_t myWeather = {};
 					myWeather.city = "New York";
@@ -553,6 +568,21 @@ composite EvalPredicateExample {
 					} else {
 						printStringLn("Testcase 4.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// 4.2
+					// Size check for list<TUPLE>.
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					rule = "((weatherList sizeLT 2) && (weatherList[0].sunnyDay == true))";
+					result = eval_predicate(rule, accuWeatherTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 4.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 4.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 4.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
 				} // End of onTuple S
 		} // End of the Custom operator.
 } // End of the main composite.

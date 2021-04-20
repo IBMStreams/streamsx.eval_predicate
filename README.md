@@ -1,7 +1,7 @@
 # Rule processor for IBM Streams
 
 ## Purpose
-This toolkit offers an improved and a simpler facility for the users to let their externally authored business rules to be consumed either statically or dynamically from within the IBM Streams SPL application code and then process (evaluate) them as the data flows through the application pipeline. Such an evaluation returns a true or false result for every rule that gets processed to indicate whether the rule expression criteria is met or not met.
+This toolkit offers an improved and a simpler facility for users to let their externally authored business rules to be consumed either statically or dynamically from within the IBM Streams SPL application code and then process (evaluate) them as the data flows through the application pipeline. Such an evaluation returns a true or false result for every rule that gets processed to indicate whether the rule expression criteria is met or not met.
 
 ## Main feature
 It provides the following function that can be called from within the IBM Streams application code. This function is designed to use internal in-memory caching in order to be optimal when processing a rule that gets evaluated frequently inside a given IBM Streams Custom operator logic. Such caching is done on a per PE i.e. Linux process thread basis. In addition, it uses C++ reference pointers wherever possible to reduce the overall rule processing time by avoiding unnecessary data copy that can get expensive. 
@@ -61,7 +61,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
 2. This new eval_predicate function allows the user defined rule expression to access nested tuple attributes.
 
-3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
+3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE.
 
 4. This new eval_predicate function supports the following operations inside the rule.
 
@@ -71,7 +71,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
    c. It supports these arithmetic operations: +, -, *, /, %
 
-   d. It supports these special operations: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
+   d. It supports these special operations for rstring, set, list and map: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 
    e. No bitwise operations are supported at this time.
 

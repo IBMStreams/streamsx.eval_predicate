@@ -4,7 +4,7 @@
  <info:identity>
    <info:name>eval_predicate</info:name>
    <info:description>Toolkit for user defined rule (expression) processing</info:description>
-   <info:version>1.0.2</info:version>
+   <info:version>1.0.3</info:version>
    <info:requiredProductVersion>4.2.1.6</info:requiredProductVersion>
  </info:identity>
  <info:dependencies/>

@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/15/2021
+Last modified on: Apr/20/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -1243,9 +1243,10 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A9.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
-					
-					// A9.2 (set<rstring> contains operation verb)
-					_rule = "(a.transport.cars.models contains 'Tributo')";
+
+					// A9.2 (rstring sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.autoMaker sizeLE 12)";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -1255,9 +1256,9 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A9.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
-
-					// A9.3 (set<rstring> notContains operation verb)
-					_rule = "(a.transport.cars.models notContains 'Portofino')";
+					
+					// A9.3 (set<rstring> contains operation verb)
+					_rule = "(a.transport.cars.models contains 'Tributo')";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -1266,6 +1267,31 @@ composite FunctionalTests {
 						printStringLn("Testcase A9.3: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A9.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A9.4 (set<rstring> notContains operation verb)
+					_rule = "(a.transport.cars.models notContains 'Portofino')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A9.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A9.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A9.4: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A9.5 (set<rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.models sizeEQ 4)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A9.5: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A9.5: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A9.5: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -1292,6 +1318,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A10.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A10.3 (set<int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.rpmRange sizeNE 5)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A10.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A10.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A10.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A11.1 (set<int64> contains operation verb)
@@ -1316,6 +1355,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A11.2: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A11.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A11.3 (set<int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.numberOfEnginesMade sizeLT 2)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A11.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A11.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A11.3: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -1342,6 +1394,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A12.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A12.3 (set<float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.secondsForZeroToSixty sizeLE 7)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A12.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A12.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A12.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A13.1 (set<float64> contains operation verb)
@@ -1366,6 +1431,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A13.2: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A13.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A13.3 (set<float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.cars.maxEngineTemp sizeGT 7)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A13.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A13.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A13.3: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -1487,6 +1565,32 @@ composite FunctionalTests {
 						printStringLn("Testcase A14.10: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A14.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A14.11 (list<rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.processorFamily sizeGE 5)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A14.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A14.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A14.11: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A14.12 (list<rstring>[idx] sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.processorFamily[2] sizeEQ 7)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A14.12: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A14.12: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A14.12: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -1645,6 +1749,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A15.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A15.14 (list<int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.processorCoreCnt sizeNE 25)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A15.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A15.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A15.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A16.1 (list<int64> == operation verb)
@@ -1801,6 +1918,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A16.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A16.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A16.14 (list<int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.l2CacheSize sizeLT 4)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A16.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A16.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A16.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 	
@@ -1959,6 +2089,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A17.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A17.14 (list<float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.estimatedPrice sizeLE 3 && a.rack.hw.estimatedPrice[2] == 849.15)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A17.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A17.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A17.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A18.1 (list<float64> == operation verb)
@@ -2116,6 +2259,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A18.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A18.14 (list<float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.revenueTarget sizeGT 3 && a.rack.hw.revenueTarget[5] == 12482031823.95)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A18.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A18.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A18.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A19.1 (map<rstring,int32> == operation verb)
@@ -2272,6 +2428,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A19.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A19.14 (map<rstring,int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToId sizeGE 5 && b.digital.sw.productNameToId['Streams2'] == 52984)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A19.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A19.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A19.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A20.1 (map<int32,rstring> == operation verb)
@@ -2392,6 +2561,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A20.10: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A20.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A20.11 (map<int32,rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productIdToName sizeEQ 3 && b.digital.sw.productIdToName[23422] contains 'Star DB')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A20.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A20.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A20.11: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -2549,6 +2731,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A21.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A21.14 (map<rstring,int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToOrderVolume sizeNE 2 && b.digital.sw.productNameToOrderVolume['You Chat'] >= 529842)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A21.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A21.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A21.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A22.1 (map<int64,rstring> == operation verb)
@@ -2669,6 +2864,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A22.10: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A22.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A22.11 (map<int64,rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.orderVolumeToProductName sizeLT 10 && b.digital.sw.orderVolumeToProductName[2348922] startsWith 'Star ')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A22.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A22.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A22.11: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -2827,6 +3035,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A23.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A23.14 (map<rstring,float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToProfitMargin sizeLT 10 && b.digital.sw.productNameToProfitMargin['Star DB'] == 92348922.45)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A23.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A23.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A23.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A24.1 (map<float32,rstring> == operation verb)
@@ -2947,6 +3168,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A24.10: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A24.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A24.11 (map<float32,rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.profitMarginToProductName[9529842.17] sizeLE 10 && b.digital.sw.profitMarginToProductName[528438131.84] endsWith 'NYC')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A24.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A24.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A24.11: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -3105,6 +3339,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A25.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A25.14 (map<rstring,float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToRevenue sizeGT 7 && b.digital.sw.productNameToRevenue['Streams'] >= 945438131.84)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A25.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A25.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A25.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A26.1 (map<float64,rstring> == operation verb)
@@ -3226,6 +3473,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A26.10: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A26.11 (map<float64,rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.revenueToProductName sizeGE 3 && b.digital.sw.revenueToProductName[92529842.17] == 'Star DB')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A26.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A26.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A26.11: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A27.1 (map<rstring,rstring> == operation verb)
@@ -3346,6 +3606,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A27.10: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A27.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A27.11 (map<rstring,rstring> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToGuid sizeEQ 3 && b.digital.sw.productNameToGuid['Streams'] sizeNE 10)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A27.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A27.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A27.11: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -3504,6 +3777,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A28.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A28.14 (map<int32,int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.d sizeLT 3 && b.integers.iw.d[3] != 15)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A28.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A28.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A28.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A29.1 (map<int32,int64> == operation verb)
@@ -3660,6 +3946,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A29.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A29.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A29.14 (map<int32,int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.e sizeLE 4 && b.integers.iw.e[11] >= 12)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A29.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A29.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A29.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -3818,6 +4117,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A30.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A30.14 (map<int64,int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.f sizeGE 4 && b.integers.iw.f[14] == 13)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A30.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A30.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A30.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A31.1 (map<int64,int64> == operation verb)
@@ -3974,6 +4286,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A31.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A31.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A31.14 (map<int64,int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.g sizeEQ 4 && b.integers.iw.g[21] != 22)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A31.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A31.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A31.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -4132,6 +4457,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A32.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A32.14 (map<int32,float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.h sizeNE 2 && b.integers.iw.h contains 27)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A32.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A32.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A32.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A33.1 (map<int32,float64> == operation verb)
@@ -4288,6 +4626,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A33.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A33.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A33.14 (map<int32,float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.i sizeLT 4 && b.integers.iw.i[33] <= 34.72)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A33.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A33.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A33.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -4446,6 +4797,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A34.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A34.14 (map<int64,float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.j sizeLE 4 && b.integers.iw.j notContains 37)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A34.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A34.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A34.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A35.1 (map<int64,float64> == operation verb)
@@ -4602,6 +4966,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A35.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A35.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A35.14 (map<int64,float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.integers.iw.k sizeGT 2 && b.integers.iw.k[41] < 43.00)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A35.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A35.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A35.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -4760,6 +5137,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A36.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A36.14 (map<float32,int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.l sizeGE 2 && c.reals.fw.l contains 28.95)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A36.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A36.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A36.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A37.1 (map<float32,int64> == operation verb)
@@ -4916,6 +5306,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A37.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A37.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A37.14 (map<float32,int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.m sizeEQ 3 && c.reals.fw.m[36.17] == 35)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A37.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A37.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A37.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -5074,6 +5477,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A38.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A38.14 (map<float64,int32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.n sizeNE 3 && c.reals.fw.n notContains 78.16)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A38.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A38.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A38.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A39.1 (map<float64,int64> == operation verb)
@@ -5230,6 +5646,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A39.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A39.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A39.14 (map<float64,int64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.o sizeLT 3 && c.reals.fw.o[42.65] == 41)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A39.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A39.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A39.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -5388,6 +5817,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A40.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A40.14 (map<float32,float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.p sizeLE 3 && c.reals.fw.p notContains 15.87)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A40.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A40.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A40.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A41.1 (map<float32,float64> == operation verb)
@@ -5544,6 +5986,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A41.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A41.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A41.14 (map<float32,float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.q sizeGT 3 && c.reals.fw.q contains 49.81)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A41.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A41.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A41.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -5702,6 +6157,19 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A42.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A42.14 (map<float64,float32> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.r sizeGE 3 && c.reals.fw.r notContains 55.37)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A42.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A42.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A42.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A43.1 (map<float64,float64> == operation verb)
@@ -5858,6 +6326,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A43.13: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A43.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A43.14 (map<float64,float64> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(c.reals.fw.s sizeGE 3 && c.reals.fw.s[63.15] == 64.65)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A43.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A43.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A43.14: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 
@@ -6100,6 +6581,19 @@ composite FunctionalTests {
 						printStringLn("Testcase A52.1: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A52.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A52.2 (list<TUPLE> sizeXX operation verb)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(weatherList sizeLE 1 && weatherList[0].sunnyDay == false)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A52.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A52.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A52.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.
@@ -7289,6 +7783,110 @@ composite FunctionalTests {
 						printStringLn("Testcase B80.1: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase B80.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// B81.1 (SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB 122)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(weatherList sizeLE1 && weatherList[0].sunnyDay == false)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// B81.2 (INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE 123)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.plane.isBasedInUSA sizeEQ 1)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.3 (INCOMPATIBLE_SIZE_NE_OPERATION_FOR_LHS_ATTRIB_TYPE 124)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.plane.planesMade sizeNE 4)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.4 (INCOMPATIBLE_SIZE_LT_OPERATION_FOR_LHS_ATTRIB_TYPE 125)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.plane.planesMade sizeLT 7)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.4: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.5 (INCOMPATIBLE_SIZE_LE_OPERATION_FOR_LHS_ATTRIB_TYPE 126)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.plane.countriesOfOperation sizeLE 75)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.5: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.5: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.5: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.6 (INCOMPATIBLE_SIZE_GT_OPERATION_FOR_LHS_ATTRIB_TYPE 127)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.transport.plane.averageProfit sizeGT 256)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.6: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.6: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.6: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.7 (INCOMPATIBLE_SIZE_GE_OPERATION_FOR_LHS_ATTRIB_TYPE 128)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(a.rack.hw.processorCoreCnt[4] sizeGE 256)";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.7: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.7: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.7: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B81.8 (RHS_VALUE_NO_MATCH_FOR_SIZEXX_OPERATION_VERB 129)
+					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+					_rule = "(b.digital.sw.productNameToRevenue sizeEQ '1024')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.8: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.8: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.8: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.

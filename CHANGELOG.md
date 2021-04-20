@@ -1,5 +1,9 @@
 # Changes
 
+## v1.0.3
+* Apr/20/2021
+* Added more special operations for rstring, set, list and map. They are sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT and sizeGE.
+
 ## v1.0.2
 * Apr/15/2021
 * Added support for the use of list of TUPLE in a rule expression.

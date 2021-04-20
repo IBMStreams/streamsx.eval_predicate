@@ -5,24 +5,14 @@
     <cppNamespaceName>eval_predicate_functions</cppNamespaceName>
     <functions>
       <function>
-        <description>It evaluates a user defined rule (i.e. expression) represented as an rstring using the given tuple. The rule (expression) has the same syntax and limitations as the filter parameter to the Import operator.
+        <description>
+It evaluates a user defined rule (i.e. expression) represented as an rstring using the given tuple.
 @param expr User defined rule (expression) to be evaluated i.e. processed. Type: rstring
 @param myTuple A user defined tuple whose attributes the rule (expression) should refer to. Type: Tuple
 @param error  A mutable variable that will contain a non-zero error code if a rule processing error occurs. Type: int32
 @param trace A boolean value to enable tracing inside this function. Type: boolean
 @return It returns true when the rule evaluation i.e. processing is successful. Otherwise, it returns false.  Type: boolean
-
-	  mutable int32 error = 0;
-	  boolean result = eval_predicate(&quot;name == 'Tester1'&quot;, myTuple, error, false);
-	
-	  if (result == true) {
-             printStringLn(&quot;Evaluation criteria is met..&quot;);
-          } else if(result == false &amp;&amp; error == 0) {
-             printStringLn(&quot;Evaluation criteria is not met..&quot;);
-          } else {
-      	     printStringLn(&quot;Evaluation execution failed. Error=&quot; + (rstring)error);
-          }
-	</description>
+		</description>
         <prototype>&lt;tuple T> public boolean eval_predicate(rstring expr, T myTuple, mutable int32 error, boolean trace)</prototype>
       </function>
     </functions>

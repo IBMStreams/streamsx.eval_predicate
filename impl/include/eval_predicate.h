@@ -6,6 +6,12 @@
 */
 /*
 ============================================================
+First created on: Mar/05/2021
+Last modified on: Apr/20/2021
+
+This toolkit's public GitHub URL:
+https://github.com/IBMStreams/streamsx.eval_predicate
+
 This file contains C++ native function(s) provided in the
 eval_predicate toolkit. It has very elaborate logic to
 evaluate a user given expression a.k.a user defined rule.
@@ -26,8 +32,9 @@ contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
 --> It supports these relational operations: ==, !=, <, <=, >, >=
 --> It supports these logical operations: ||, &&
 --> It supports these arithmetic operations: +, -, *, /, %
---> It supports these special operations:
-    contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
+--> It supports these special operations for rstring, set, list and map:
+    contains, startsWith, endsWith, notContains, notStartsWith,
+    notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -85,12 +92,6 @@ So, I took a fresh approach to write this new eval_predicate function
 with my own ideas along with sufficient commentary to explain the logic.
 That obviously led to implementation and feature differences between
 the built-in evalPredicate and my new eval_predicate in this file.
-
-This toolkit's GitHub URL:
-https://github.com/IBMStreams/streamsx.eval_predicate
-
-First created on: Mar/05/2021
-Last modified on: Apr/15/2021
 ============================================================
 */
 #ifndef FUNCTIONS_H_
@@ -234,6 +235,15 @@ Last modified on: Apr/15/2021
 #define NO_PERIOD_FOUND_AFTER_LIST_OF_TUPLE 119
 #define ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_EVALUATION 120
 #define EXP_EVAL_PLAN_OBJECT_CREATION_ERROR_FOR_LIST_OF_TUPLE 121
+#define SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB 122
+#define INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE 123
+#define INCOMPATIBLE_SIZE_NE_OPERATION_FOR_LHS_ATTRIB_TYPE 124
+#define INCOMPATIBLE_SIZE_LT_OPERATION_FOR_LHS_ATTRIB_TYPE 125
+#define INCOMPATIBLE_SIZE_LE_OPERATION_FOR_LHS_ATTRIB_TYPE 126
+#define INCOMPATIBLE_SIZE_GT_OPERATION_FOR_LHS_ATTRIB_TYPE 127
+#define INCOMPATIBLE_SIZE_GE_OPERATION_FOR_LHS_ATTRIB_TYPE 128
+#define RHS_VALUE_NO_MATCH_FOR_SIZEXX_OPERATION_VERB 129
+#define INVALID_COLLECTION_SIZE_CHECK_OPERATION_VERB_FOUND_DURING_EXP_EVAL 130
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -368,9 +378,13 @@ namespace eval_predicate_functions {
     void performRStringEvalOperations(rstring const & lhsValue,
     	rstring const & rhsValue, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
-    // Perform eval operations for a set based LHS attribute.
+    // Perform existence check eval operations for a collection based LHS attribute.
     void performCollectionItemExistenceEvalOperations(boolean const & itemExists,
     	rstring const & operationVerb,
+		boolean & subexpressionEvalResult, int32 & error);
+    // Perform size check eval operations for a collection based LHS attribute.
+    void performCollectionSizeCheckEvalOperations(int32 const & lhsSize,
+    	int32 const & rhsInt32, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
     // Perform relational or arithmetic eval operatios.
 	template<class T1>
@@ -1872,12 +1886,14 @@ namespace eval_predicate_functions {
     	// We support these logical operations: ||, &&
     	// We support these arithmetic operations: +, -, *, /, %
     	// Special operations:
-    	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
+    	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith,
+    	// sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
     	// No bitwise operations are supported at this time.
 		rstring relationalAndArithmeticOperations =
 			rstring("==,!=,<=,<,>=,>,+,-,*,/,%,") +
 			rstring("contains,startsWith,endsWith,") +
-			rstring("notContains,notStartsWith,notEndsWith");
+			rstring("notContains,notStartsWith,notEndsWith,") +
+			rstring("sizeEQ,sizeNE,sizeLT,sizeLE,sizeGT,sizeGE");
     	SPL::list<rstring> relationalAndArithmeticOperationsList =
     		Functions::String::csvTokenize(relationalAndArithmeticOperations);
 
@@ -2370,7 +2386,7 @@ namespace eval_predicate_functions {
 						// We must ensure that it is an exact match.
 						// That means at the end of this attribute name,
 						// we can only have either a space or a [ character or
-						// only of these allowed operation verb characters.
+						// only any of these allowed operation verb characters.
 						// ==,!=,<=,<,>=,>,+,-,*,/,%
 						int32 lengthOfAttributeName =
 							Functions::String::length(lhsAttribName);
@@ -2486,15 +2502,10 @@ namespace eval_predicate_functions {
 									break;
 								} else {
 									// A non-space or non-[ character found which is
-									// valid when the following operation verb is
-									// either contains or notContains. If not, it is not valid.
-									// This condition here is allowed only for a list of
-									// SPL built-in data types and not for a list<TUPLE>.
-									if(Functions::String::findFirst(lhsAttribType, "list<tuple<") == 0) {
-										error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE;
-										return(false);
-									}
-
+									// valid when the operation verb following this LHS is
+									// either contains or notContains or sizeXX.
+									// If not, it is not valid. We will do this check
+									// right after this while loop.
 									break;
 								}
 
@@ -2502,20 +2513,49 @@ namespace eval_predicate_functions {
 							} // End of inner while loop.
 
 							if(openSquareBracketFound == false) {
-								// A list attribute with no [ is valid only if the
-								// following operation verb is either contains or
-								// notContains. This is permitted only for a list of
-								// SPL built-in data types and not for list<TUPLE>
+								boolean noOpenSquareBracketAllowed = false;
+
+								// If it is a list<TUPLE> attribute with no [ character,
+								// it is valid only if the following operation verb is a sizeXX.
+								if(Functions::String::findFirst(lhsAttribType, "list<tuple<" ) == 0 &&
+									(Functions::String::findFirst(expr, "sizeEQ", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeNE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGE", idx) == idx)) {
+									noOpenSquareBracketAllowed = true;
+								}
+
+								if(Functions::String::findFirst(lhsAttribType, "list<tuple<" ) == 0 &&
+									noOpenSquareBracketAllowed == false) {
+									// The check we did in the previous if block didn't pass.
+									// In that case, no open square bracket condition is not allowed.
+									error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE;
+									return(false);
+								}
+
+								// A list attribute having a built-in SPL data type with
+								// no [ is valid only if the following operation verb is
+								// either contains or notContains or sizeXX.
 								if((Functions::String::findFirst(lhsAttribType, "list<tuple<") == -1) &&
 									(Functions::String::findFirst(expr, "contains", idx) == idx ||
-									Functions::String::findFirst(expr, "notContains", idx) == idx)) {
+									Functions::String::findFirst(expr, "notContains", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeEQ", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeNE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGE", idx) == idx)) {
+									noOpenSquareBracketAllowed = true;
+								}
+
+								if(noOpenSquareBracketAllowed == true) {
 									// This is allowed. We can break out of the while loop that is
 									// iterating over the tuple attributes map.
 									// We have no list index value in this case.
 									rstring str = "";
-									Functions::Collections::appendM(subexpressionLayoutList,
-										str);
-
+									Functions::Collections::appendM(subexpressionLayoutList, str);
 									// We completed the validation of the lhs.
 									lhsFound = true;
 									// We can break out of the outer while loop to
@@ -2757,7 +2797,9 @@ namespace eval_predicate_functions {
 								} else {
 									// A non-space or non-[ character found which is
 									// valid when the following operation verb is
-									// either contains or notContains. If not, it is not valid.
+									// either contains or notContains or sizeXX.
+									// If not, it is not valid. We will do this check
+									// right after this while loop.
 									break;
 								}
 
@@ -2767,15 +2809,20 @@ namespace eval_predicate_functions {
 							if(openSquareBracketFound == false) {
 								// A map attribute with no [ is valid only if the
 								// following operation verb is either contains or
-								// notContains.
+								// notContains or sizeXX.
 								if(Functions::String::findFirst(expr, "contains", idx) == idx ||
-									Functions::String::findFirst(expr, "notContains", idx) == idx) {
+									Functions::String::findFirst(expr, "notContains", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeEQ", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeNE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeLE", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGT", idx) == idx ||
+									Functions::String::findFirst(expr, "sizeGE", idx) == idx) {
 									// This is allowed. We can break out of the while loop that is
 									// iterating over the tuple attributes map.
 									// We have no map key value in this case.
 									rstring str = "";
-									Functions::Collections::appendM(subexpressionLayoutList,
-										str);
+									Functions::Collections::appendM(subexpressionLayoutList, str);
 
 									// We completed the validation of the lhs.
 									lhsFound = true;
@@ -2786,7 +2833,7 @@ namespace eval_predicate_functions {
 									error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_MAP;
 									return(false);
 								}
-							}
+							} // End of if(openSquareBracketFound == false)
 
 							// After the open square bracket, we can have an
 							// integer or a float or a string as the map key.
@@ -3063,8 +3110,7 @@ namespace eval_predicate_functions {
 						// subscript to refer to an lhs value.
 						if(lhsSubscriptForListAndMapAdded == false) {
 							rstring str = "";
-							Functions::Collections::appendM(subexpressionLayoutList,
-								str);
+							Functions::Collections::appendM(subexpressionLayoutList, str);
 						}
 
 						// We completed the validation of the lhs.
@@ -3529,16 +3575,27 @@ namespace eval_predicate_functions {
     				} // End of else block.
     			} // End of validating arithmetic operator verbs.
 
-    			// We will allow contains and its inverse only for
+    			// We will allow contains, notContains and sizeXX only for
     			// string, set, list and map based attributes.
+				// For maps, the first two of these verbs are applicable to
+    			// check whether a map contains or notContains a given key.
+    			// For all other data types, existence check is done for the
+    			// contents stored inside that collection.
     			if(currentOperationVerb == "contains" ||
-    				currentOperationVerb == "notContains") {
+    				currentOperationVerb == "notContains" ||
+					currentOperationVerb == "sizeEQ" ||
+					currentOperationVerb == "sizeNE" ||
+					currentOperationVerb == "sizeLT" ||
+					currentOperationVerb == "sizeLE" ||
+					currentOperationVerb == "sizeGT" ||
+					currentOperationVerb == "sizeGE") {
     				if(lhsAttribType != "rstring" &&
     					lhsAttribType != "set<int32>" && lhsAttribType != "set<int64>" &&
     					lhsAttribType != "set<float32>" && lhsAttribType != "set<float64>" &&
 						lhsAttribType != "set<rstring>" && lhsAttribType != "list<rstring>" &&
 						lhsAttribType != "list<int32>" && lhsAttribType != "list<int64>" &&
 						lhsAttribType != "list<float32>" && lhsAttribType != "list<float64>" &&
+						Functions::String::findFirst(lhsAttribType, "list<tuple<") != 0 &&
 						lhsAttribType != "map<rstring,rstring>" &&
 						lhsAttribType != "map<rstring,int32>" && lhsAttribType != "map<int32,rstring>" &&
 						lhsAttribType != "map<rstring,int64>" && lhsAttribType != "map<int64,rstring>" &&
@@ -3553,20 +3610,30 @@ namespace eval_predicate_functions {
 						lhsAttribType != "map<float32,float32>" && lhsAttribType != "map<float32,float64>" &&
 						lhsAttribType != "map<float64,float32>" && lhsAttribType != "map<float64,float64>") {
     					// This operation verb is not allowed for a given LHS attribute type.
-    					// For maps, these two verbs are applicable to check whether a map
-    					// contains or notContains a given key.
     					if(currentOperationVerb == "contains") {
     						error = INCOMPATIBLE_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else {
+    					} else if(currentOperationVerb == "notContains") {
     						error = INCOMPATIBLE_NOT_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "sizeEQ") {
+    						error = INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "sizeNE") {
+    						error = INCOMPATIBLE_SIZE_NE_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "sizeLT") {
+    						error = INCOMPATIBLE_SIZE_LT_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "sizeLE") {
+    						error = INCOMPATIBLE_SIZE_LE_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "sizeGT") {
+    						error = INCOMPATIBLE_SIZE_GT_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else {
+    						error = INCOMPATIBLE_SIZE_GE_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					}
 
     					return(false);
     				} else {
     					// We must do one more validation with lists and maps for their
-    					// existence check only when they have non-string item types without
+    					// existence and size checks when they have non-string item types without
     					// index based access. If it doesn't pass this check, we should not
-    					// allow the existence check operation.
+    					// allow the existence and size check operations.
     					if(lhsSubscriptForListAndMapAdded == true &&
     						(lhsAttribType == "list<int32>" || lhsAttribType == "list<int64>" ||
     						lhsAttribType == "list<float32>" || lhsAttribType == "list<float64>" ||
@@ -3580,11 +3647,24 @@ namespace eval_predicate_functions {
 							lhsAttribType == "map<float64,int32>" || lhsAttribType == "map<float64,int64>" ||
 							lhsAttribType == "map<float32,float32>" || lhsAttribType == "map<float32,float64>" ||
 							lhsAttribType == "map<float64,float32>" || lhsAttribType == "map<float64,float64>")) {
-    						// We can't allow this operation when list or map index access is in place.
+    						// We can't allow this operation when list or map index access is
+    						// in place for non-string based data is stored inside of them.
         					if(currentOperationVerb == "contains") {
         						error = INCOMPATIBLE_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
-        					} else {
+        					} else if(currentOperationVerb == "notContains") {
         						error = INCOMPATIBLE_NOT_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "sizeEQ") {
+        						error = INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "sizeNE") {
+        						error = INCOMPATIBLE_SIZE_NE_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "sizeLT") {
+        						error = INCOMPATIBLE_SIZE_LT_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "sizeLE") {
+        						error = INCOMPATIBLE_SIZE_LE_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "sizeGT") {
+        						error = INCOMPATIBLE_SIZE_GT_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else {
+        						error = INCOMPATIBLE_SIZE_GE_OPERATION_FOR_LHS_ATTRIB_TYPE;
         					}
 
         					return(false);
@@ -3593,6 +3673,13 @@ namespace eval_predicate_functions {
     	    			// We have a compatible operation verb for a given LHS attribute type.
     	    			// Move the idx past the current operation verb.
     	    			idx += Functions::String::length(currentOperationVerb);
+
+    	    			// Special operation verbs such as contains, notContains etc.
+    	    			// must be followed by a space character.
+    	    			if(idx < stringLength && myBlob[idx] != ' ') {
+    	    				error = SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB;
+    	    				return(false);
+    	    			}
     				}
     			} // End of validating contains operator verbs.
 
@@ -3625,6 +3712,13 @@ namespace eval_predicate_functions {
     	    			// We have a compatible operation verb for a given LHS attribute type.
     	    			// Move the idx past the current operation verb.
     	    			idx += Functions::String::length(currentOperationVerb);
+
+    	    			// Special operation verbs such as startsWith, endsWith etc.
+    	    			// must be followed by a space character.
+    	    			if(idx < stringLength && myBlob[idx] != ' ') {
+    	    				error = SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB;
+    	    				return(false);
+    	    			}
     				}
     			} // End of validating starts, ends operator verbs.
 
@@ -3737,7 +3831,8 @@ namespace eval_predicate_functions {
     			// LHS integer usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
-	    			currentOperationVerb != "notContains") &&
+	    			currentOperationVerb != "notContains" &&
+	    			Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "int32" ||
 					lhsAttribType == "uint32" || lhsAttribType == "int64" ||
 					lhsAttribType == "uint64" ||
@@ -3798,7 +3893,7 @@ namespace eval_predicate_functions {
 					boolean negtiveSignAfterTheNumeralValue = false;
 
 					// In this while loop, we will try to parse the numeral value that
-					// appears after the arithmetic sign.
+					// appears as the RHS value.
 					while(idx < stringLength) {
 						// We can process until we get a space or a )
 						if(myBlob[idx] == ' ') {
@@ -3866,7 +3961,8 @@ namespace eval_predicate_functions {
     			// LHS float usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
-		    			currentOperationVerb != "notContains") &&
+		    		currentOperationVerb != "notContains" &&
+					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "float32" ||
 					lhsAttribType == "float64" ||
 					lhsAttribType == "set<float32>" || lhsAttribType == "set<float64>" ||
@@ -3904,7 +4000,7 @@ namespace eval_predicate_functions {
 					boolean negtiveSignAfterTheNumeralValue = false;
 
 					// In this while loop, we will try to parse the numeral value that
-					// appears after the arithmetic sign.
+					// appears as the RHS value.
 					while(idx < stringLength) {
 						// We can process until we get a space or a )
 						if(myBlob[idx] == ' ') {
@@ -4002,7 +4098,8 @@ namespace eval_predicate_functions {
     			// LHS string usage. Note that when it comes to a map,
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
-		    		currentOperationVerb != "notContains") &&
+		    		currentOperationVerb != "notContains" &&
+					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "rstring" ||
 					lhsAttribType == "set<rstring>" ||
 					lhsAttribType == "list<rstring>" ||
@@ -4060,6 +4157,50 @@ namespace eval_predicate_functions {
 						return(false);
 					}
 				} // End of if(lhsAttribType == "rstring" ...
+
+				// If the operation verb is sizeXX, then the RHS
+				// must be an integer value without a sign.
+				if(currentOperationVerb == "sizeEQ" ||
+					currentOperationVerb == "sizeNE" ||
+					currentOperationVerb == "sizeLT" ||
+					currentOperationVerb == "sizeLE" ||
+					currentOperationVerb == "sizeGT" ||
+					currentOperationVerb == "sizeGE") {
+					// The necessary check to ensure that the sizeXX
+					// operation verb is only associated with a
+					// non indexed plain collection type i.e. set, list or map was
+					// already done in the LHS and OpVerb validation stages above.
+					//
+					// In this case, RHS can only have numeral digits.
+					boolean allNumeralsFound = false;
+
+					// In this while loop, we will try to parse the numeral value that
+					// appears as the RHS value.
+					while(idx < stringLength) {
+						// We can process until we get a space or a )
+						if(myBlob[idx] == ' ') {
+							// The numeral part ended at the previous position.
+							break;
+						} else if(myBlob[idx] == ')') {
+							// The numeral part ended at the previous position.
+							break;
+						} else if(myBlob[idx] < '0' || myBlob[idx] > '9') {
+							// A non-numeral character found.
+							allNumeralsFound = false;
+							break;
+						} else {
+							allNumeralsFound = true;
+							rhsValue += myBlob[idx];
+						}
+
+						idx++;
+					} // End of the inner while loop.
+
+					if(allNumeralsFound == false) {
+						error = RHS_VALUE_NO_MATCH_FOR_SIZEXX_OPERATION_VERB;
+						return(false);
+					}
+				} // End of if(currentOperationVerb == "sizeEQ" ||
 
     			// Store the current RHS value in the subexpression layout list.
 				Functions::Collections::appendM(subexpressionLayoutList, rhsValue);
@@ -4964,425 +5105,705 @@ namespace eval_predicate_functions {
     				rstring const & lhsValue = myMap.at(listIndexOrMapKeyValue);
     				performRStringEvalOperations(lhsValue, rhsValue,
     					operationVerb, subexpressionEvalResult, error);
-    			// ****** Collection item existence evaluations ******
+    			// ****** Collection size check (OR) Collection item existence evaluations ******
     			} else if(lhsAttributeType == "set<int32>") {
     				SPL::set<int32> const & mySet = cvh;
-    				int32 const & item = atoi(rhsValue.c_str());
-    				boolean itemExists = Functions::Collections::has(mySet, item);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(mySet);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(mySet, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "set<int64>") {
     				SPL::set<int64> const & mySet = cvh;
-    				int64 const & item = atol(rhsValue.c_str());
-    				boolean itemExists = Functions::Collections::has(mySet, item);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(mySet);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(mySet, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "set<float32>") {
     				SPL::set<float32> const & mySet = cvh;
-    				float32 const & item = atof(rhsValue.c_str());
-    				boolean itemExists = Functions::Collections::has(mySet, item);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(mySet);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(mySet, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "set<float64>") {
     				SPL::set<float64> const & mySet = cvh;
-    				float64 const & item = atof(rhsValue.c_str());
-    				boolean itemExists = Functions::Collections::has(mySet, item);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(mySet);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(mySet, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "set<rstring>") {
     				SPL::set<rstring> const & mySet = cvh;
-    				boolean itemExists = Functions::Collections::has(mySet, rhsValue);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(mySet);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(mySet, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "list<rstring>" &&
             		listIndexOrMapKeyValue == "") {
     				SPL::list<rstring> const & myList = cvh;
-    				boolean itemExists = Functions::Collections::has(myList, rhsValue);
-    			    performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-    					subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myList);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myList, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
     			} else if(lhsAttributeType == "list<int32>" &&
                 	listIndexOrMapKeyValue == "") {
         			SPL::list<int32> const & myList = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myList, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myList);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myList, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "list<int64>" &&
                 	listIndexOrMapKeyValue == "") {
         			SPL::list<int64> const & myList = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myList, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myList);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myList, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "list<float32>" &&
         			listIndexOrMapKeyValue == "") {
         			SPL::list<float32> const & myList = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myList, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myList);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myList, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "list<float64>" &&
         			listIndexOrMapKeyValue == "") {
         			SPL::list<float64> const & myList = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myList, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myList);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myList, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<rstring,rstring>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<rstring,rstring> const & myMap = cvh;
-        			boolean itemExists = Functions::Collections::has(myMap, rhsValue);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myMap, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<rstring,int32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<rstring,int32> const & myMap = cvh;
-        			boolean itemExists = Functions::Collections::has(myMap, rhsValue);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myMap, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<rstring,int64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<rstring,int64> const & myMap = cvh;
-        			boolean itemExists = Functions::Collections::has(myMap, rhsValue);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myMap, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<rstring,float32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<rstring,float32> const & myMap = cvh;
-        			boolean itemExists = Functions::Collections::has(myMap, rhsValue);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myMap, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<rstring,float64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<rstring,float64> const & myMap = cvh;
-        			boolean itemExists = Functions::Collections::has(myMap, rhsValue);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						boolean itemExists = Functions::Collections::has(myMap, rhsValue);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int32,rstring>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int32,rstring> const & myMap = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int32,int32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int32,int32> const & myMap = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int32,int64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int32,int64> const & myMap = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int32,float32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int32,float32> const & myMap = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int32,float64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int32,float64> const & myMap = cvh;
-        			int32 const & item = atoi(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int32 const & item = atoi(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int64,rstring>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int64,rstring> const & myMap = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int64,int32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int64,int32> const & myMap = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int64,int64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int64,int64> const & myMap = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int64,float32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int64,float32> const & myMap = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<int64,float64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<int64,float64> const & myMap = cvh;
-        			int64 const & item = atol(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						int64 const & item = atol(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float32,rstring>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float32,rstring> const & myMap = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
 
-    				// The C atof API used above actually returns double which is
-    				// equivalent to the SPL float64. So, assigning the result from
-    				// that API to an SPL float32 variable can't be made fully
-    				// accurate without losing some precision for very large float32 numbers.
-    				// It is a known limitation in C. So, for very large float32 based map keys,
-    				// I had problems in the SPL 'has' method where it wrongly returned that
-    				// the key doesn't exist when it actually is there.
-    				// e-g: 5.28438e+08
-    				// So, I stopped calling the SPL 'has' function from C++ code.
-    				// The following manual procedure by converting the float based key into
-    				// a string and then comparing it worked for me. I don't know how much
-    				// overhead it will add compared to the SPL 'has' function if it indeed works.
-			    	ostringstream key;
-			    	key << item;
-			    	boolean itemExists = false;
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
 
-					ConstMapIterator it = myMap.getBeginIterator();
+						// The C atof API used above actually returns double which is
+						// equivalent to the SPL float64. So, assigning the result from
+						// that API to an SPL float32 variable can't be made fully
+						// accurate without losing some precision for very large float32 numbers.
+						// It is a known limitation in C. So, for very large float32 based map keys,
+						// I had problems in the SPL 'has' method where it wrongly returned that
+						// the key doesn't exist when it actually is there.
+						// e-g: 5.28438e+08
+						// So, I stopped calling the SPL 'has' function from C++ code.
+						// The following manual procedure by converting the float based key into
+						// a string and then comparing it worked for me. I don't know how much
+						// overhead it will add compared to the SPL 'has' function if it indeed works.
+						ostringstream key;
+						key << item;
+						boolean itemExists = false;
 
-					while (it != myMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
-						std::pair<float32,rstring> const & myFloat32RString = myVal;
-    			    	ostringstream firstMember;
-    			    	firstMember << myFloat32RString.first;
+						ConstMapIterator it = myMap.getBeginIterator();
 
-    			    	if(key.str() == firstMember.str()) {
-    			    		itemExists = true;
-    	    				break;
-    			    	}
+						while (it != myMap.getEndIterator()) {
+							std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+							std::pair<float32,rstring> const & myFloat32RString = myVal;
+							ostringstream firstMember;
+							firstMember << myFloat32RString.first;
 
-						it++;
-					}
+							if(key.str() == firstMember.str()) {
+								itemExists = true;
+								break;
+							}
 
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+							it++;
+						}
+
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float32,int32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float32,int32> const & myMap = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
 
-    				// The C atof API used above actually returns double which is
-    				// equivalent to the SPL float64. So, assigning the result from
-    				// that API to an SPL float32 variable can't be made fully
-    				// accurate without losing some precision for very large float32 numbers.
-    				// It is a known limitation in C. So, for very large float32 based map keys,
-    				// I had problems in the SPL 'has' method where it wrongly returned that
-    				// the key doesn't exist when it actually is there.
-    				// e-g: 5.28438e+08
-    				// So, I stopped calling the SPL 'has' function from C++ code.
-    				// The following manual procedure by converting the float based key into
-    				// a string and then comparing it worked for me. I don't know how much
-    				// overhead it will add compared to the SPL 'has' function if it indeed works.
-			    	ostringstream key;
-			    	key << item;
-			    	boolean itemExists = false;
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
 
-					ConstMapIterator it = myMap.getBeginIterator();
+						// The C atof API used above actually returns double which is
+						// equivalent to the SPL float64. So, assigning the result from
+						// that API to an SPL float32 variable can't be made fully
+						// accurate without losing some precision for very large float32 numbers.
+						// It is a known limitation in C. So, for very large float32 based map keys,
+						// I had problems in the SPL 'has' method where it wrongly returned that
+						// the key doesn't exist when it actually is there.
+						// e-g: 5.28438e+08
+						// So, I stopped calling the SPL 'has' function from C++ code.
+						// The following manual procedure by converting the float based key into
+						// a string and then comparing it worked for me. I don't know how much
+						// overhead it will add compared to the SPL 'has' function if it indeed works.
+						ostringstream key;
+						key << item;
+						boolean itemExists = false;
 
-					while (it != myMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
-						std::pair<float32,int32> const & myFloat32Int32 = myVal;
-    			    	ostringstream firstMember;
-    			    	firstMember << myFloat32Int32.first;
+						ConstMapIterator it = myMap.getBeginIterator();
 
-    			    	if(key.str() == firstMember.str()) {
-    			    		itemExists = true;
-    	    				break;
-    			    	}
+						while (it != myMap.getEndIterator()) {
+							std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+							std::pair<float32,int32> const & myFloat32Int32 = myVal;
+							ostringstream firstMember;
+							firstMember << myFloat32Int32.first;
 
-						it++;
-					}
+							if(key.str() == firstMember.str()) {
+								itemExists = true;
+								break;
+							}
 
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+							it++;
+						}
+
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float32,int64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float32,int64> const & myMap = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
 
-    				// The C atof API used above actually returns double which is
-    				// equivalent to the SPL float64. So, assigning the result from
-    				// that API to an SPL float32 variable can't be made fully
-    				// accurate without losing some precision for very large float32 numbers.
-    				// It is a known limitation in C. So, for very large float32 based map keys,
-    				// I had problems in the SPL 'has' method where it wrongly returned that
-    				// the key doesn't exist when it actually is there.
-    				// e-g: 5.28438e+08
-    				// So, I stopped calling the SPL 'has' function from C++ code.
-    				// The following manual procedure by converting the float based key into
-    				// a string and then comparing it worked for me. I don't know how much
-    				// overhead it will add compared to the SPL 'has' function if it indeed works.
-			    	ostringstream key;
-			    	key << item;
-			    	boolean itemExists = false;
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
 
-					ConstMapIterator it = myMap.getBeginIterator();
+						// The C atof API used above actually returns double which is
+						// equivalent to the SPL float64. So, assigning the result from
+						// that API to an SPL float32 variable can't be made fully
+						// accurate without losing some precision for very large float32 numbers.
+						// It is a known limitation in C. So, for very large float32 based map keys,
+						// I had problems in the SPL 'has' method where it wrongly returned that
+						// the key doesn't exist when it actually is there.
+						// e-g: 5.28438e+08
+						// So, I stopped calling the SPL 'has' function from C++ code.
+						// The following manual procedure by converting the float based key into
+						// a string and then comparing it worked for me. I don't know how much
+						// overhead it will add compared to the SPL 'has' function if it indeed works.
+						ostringstream key;
+						key << item;
+						boolean itemExists = false;
 
-					while (it != myMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
-						std::pair<float32,int64> const & myFloat32Int64 = myVal;
-    			    	ostringstream firstMember;
-    			    	firstMember << myFloat32Int64.first;
+						ConstMapIterator it = myMap.getBeginIterator();
 
-    			    	if(key.str() == firstMember.str()) {
-    			    		itemExists = true;
-    	    				break;
-    			    	}
+						while (it != myMap.getEndIterator()) {
+							std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+							std::pair<float32,int64> const & myFloat32Int64 = myVal;
+							ostringstream firstMember;
+							firstMember << myFloat32Int64.first;
 
-						it++;
-					}
+							if(key.str() == firstMember.str()) {
+								itemExists = true;
+								break;
+							}
 
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+							it++;
+						}
+
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float32,float32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float32,float32> const & myMap = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
 
-    				// The C atof API used above actually returns double which is
-    				// equivalent to the SPL float64. So, assigning the result from
-    				// that API to an SPL float32 variable can't be made fully
-    				// accurate without losing some precision for very large float32 numbers.
-    				// It is a known limitation in C. So, for very large float32 based map keys,
-    				// I had problems in the SPL 'has' method where it wrongly returned that
-    				// the key doesn't exist when it actually is there.
-    				// e-g: 5.28438e+08
-    				// So, I stopped calling the SPL 'has' function from C++ code.
-    				// The following manual procedure by converting the float based key into
-    				// a string and then comparing it worked for me. I don't know how much
-    				// overhead it will add compared to the SPL 'has' function if it indeed works.
-			    	ostringstream key;
-			    	key << item;
-			    	boolean itemExists = false;
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
 
-					ConstMapIterator it = myMap.getBeginIterator();
+						// The C atof API used above actually returns double which is
+						// equivalent to the SPL float64. So, assigning the result from
+						// that API to an SPL float32 variable can't be made fully
+						// accurate without losing some precision for very large float32 numbers.
+						// It is a known limitation in C. So, for very large float32 based map keys,
+						// I had problems in the SPL 'has' method where it wrongly returned that
+						// the key doesn't exist when it actually is there.
+						// e-g: 5.28438e+08
+						// So, I stopped calling the SPL 'has' function from C++ code.
+						// The following manual procedure by converting the float based key into
+						// a string and then comparing it worked for me. I don't know how much
+						// overhead it will add compared to the SPL 'has' function if it indeed works.
+						ostringstream key;
+						key << item;
+						boolean itemExists = false;
 
-					while (it != myMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
-						std::pair<float32,float32> const & myFloat32Float32 = myVal;
-    			    	ostringstream firstMember;
-    			    	firstMember << myFloat32Float32.first;
+						ConstMapIterator it = myMap.getBeginIterator();
 
-    			    	if(key.str() == firstMember.str()) {
-    			    		itemExists = true;
-    	    				break;
-    			    	}
+						while (it != myMap.getEndIterator()) {
+							std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+							std::pair<float32,float32> const & myFloat32Float32 = myVal;
+							ostringstream firstMember;
+							firstMember << myFloat32Float32.first;
 
-						it++;
-					}
+							if(key.str() == firstMember.str()) {
+								itemExists = true;
+								break;
+							}
 
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+							it++;
+						}
+
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float32,float64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float32,float64> const & myMap = cvh;
-        			float32 const & item = atof(rhsValue.c_str());
 
-    				// The C atof API used above actually returns double which is
-    				// equivalent to the SPL float64. So, assigning the result from
-    				// that API to an SPL float32 variable can't be made fully
-    				// accurate without losing some precision for very large float32 numbers.
-    				// It is a known limitation in C. So, for very large float32 based map keys,
-    				// I had problems in the SPL 'has' method where it wrongly returned that
-    				// the key doesn't exist when it actually is there.
-    				// e-g: 5.28438e+08
-    				// So, I stopped calling the SPL 'has' function from C++ code.
-    				// The following manual procedure by converting the float based key into
-    				// a string and then comparing it worked for me. I don't know how much
-    				// overhead it will add compared to the SPL 'has' function if it indeed works.
-			    	ostringstream key;
-			    	key << item;
-			    	boolean itemExists = false;
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float32 const & item = atof(rhsValue.c_str());
 
-					ConstMapIterator it = myMap.getBeginIterator();
+						// The C atof API used above actually returns double which is
+						// equivalent to the SPL float64. So, assigning the result from
+						// that API to an SPL float32 variable can't be made fully
+						// accurate without losing some precision for very large float32 numbers.
+						// It is a known limitation in C. So, for very large float32 based map keys,
+						// I had problems in the SPL 'has' method where it wrongly returned that
+						// the key doesn't exist when it actually is there.
+						// e-g: 5.28438e+08
+						// So, I stopped calling the SPL 'has' function from C++ code.
+						// The following manual procedure by converting the float based key into
+						// a string and then comparing it worked for me. I don't know how much
+						// overhead it will add compared to the SPL 'has' function if it indeed works.
+						ostringstream key;
+						key << item;
+						boolean itemExists = false;
 
-					while (it != myMap.getEndIterator()) {
-						std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
-						std::pair<float32,float64> const & myFloat32Float64 = myVal;
-    			    	ostringstream firstMember;
-    			    	firstMember << myFloat32Float64.first;
+						ConstMapIterator it = myMap.getBeginIterator();
 
-    			    	if(key.str() == firstMember.str()) {
-    			    		itemExists = true;
-    	    				break;
-    			    	}
+						while (it != myMap.getEndIterator()) {
+							std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+							std::pair<float32,float64> const & myFloat32Float64 = myVal;
+							ostringstream firstMember;
+							firstMember << myFloat32Float64.first;
 
-						it++;
-					}
+							if(key.str() == firstMember.str()) {
+								itemExists = true;
+								break;
+							}
 
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+							it++;
+						}
+
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float64,rstring>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float64,rstring> const & myMap = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float64,int32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float64,int32> const & myMap = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float64,int64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float64,int64> const & myMap = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float64,float32>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float64,float32> const & myMap = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		} else if(lhsAttributeType == "map<float64,float64>" &&
         			listIndexOrMapKeyValue == "") {
         			// For maps, we only support key existence check.
         			SPL::map<float64,float64> const & myMap = cvh;
-        			float64 const & item = atof(rhsValue.c_str());
-        			boolean itemExists = Functions::Collections::has(myMap, item);
-        			performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
-        				subexpressionEvalResult, error);
+
+    				if(Functions::String::findFirst(operationVerb, "size") == 0) {
+    					int32 lhsSize = Functions::Collections::size(myMap);
+    					int32 rhsInt32 = atoi(rhsValue.c_str());
+    					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+    						operationVerb, subexpressionEvalResult, error);
+    				} else {
+						float64 const & item = atof(rhsValue.c_str());
+						boolean itemExists = Functions::Collections::has(myMap, item);
+						performCollectionItemExistenceEvalOperations(itemExists, operationVerb,
+							subexpressionEvalResult, error);
+    				}
         		// ****** Relational or arithmetic evaluations ******
         		} else if(lhsAttributeType == "int32" &&
         			(operationVerb == "==" || operationVerb == "!=" ||
@@ -6221,8 +6642,23 @@ namespace eval_predicate_functions {
 						arithmeticOperandValue,
 						postArithmeticOperationVerb,
 						subexpressionEvalResult, error);
-        		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0) {
-					// If it is a list<TUPLE>, this needs a special evaluation.
+        		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0  &&
+        			listIndexOrMapKeyValue == "") {
+        			// This is a list<TUPLE> with no index value.
+        			// Then, it must be for checking the list size.
+    				// We must use the C++ interface type SPL::List that the
+    				// SPL::list is based on.
+    				// The line below shows an example of an attribute type (schema)
+    				// followed by an attribute name.
+    				// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList
+        			SPL::List const & myListTuple = cvh;
+					int32 lhsSize = myListTuple.getSize();
+					int32 rhsInt32 = atoi(rhsValue.c_str());
+					performCollectionSizeCheckEvalOperations(lhsSize, rhsInt32,
+						operationVerb, subexpressionEvalResult, error);
+        		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0  &&
+        			listIndexOrMapKeyValue != "") {
+					// If it is a list<TUPLE> with an index value, this needs a special evaluation.
 					// e-g: Body.MachineStatus.ComponentList[0].Component["MapKey"] == "MapValue"
     				// This list doesn't hold items that are made of
         			// well defined SPL built-in data types.
@@ -6422,10 +6858,10 @@ namespace eval_predicate_functions {
 								lhsAttributeName << "." << endl;
 						}
 
-        				// We are done evaluating the single tuple from this
-        				// list<TUPLE> that the user specified in the expression.
+						// We are done evaluating the single tuple from this
+						// list<TUPLE> that the user specified in the expression.
 						delete lotEvalPlanPtr;
-        				break;
+						break;
         			} // End of while loop
         		} // End of the many if conditional blocks for different eval checks.
 
@@ -6441,8 +6877,29 @@ namespace eval_predicate_functions {
     				// within the current subexpression layout list.
     				// Let us accumulate the eval results starting from this one.
     				intraSubexpressionEvalResult = subexpressionEvalResult;
+
+    				// We may be able to bail out from evaluating the
+    				// remaining parts of the expression by doing this
+    				// simple optimization in the very first part of
+    				// a given subexpression.
+    				if(intraSubexpressionLogicalOperatorInUse == "&&") {
+    					if(intraSubexpressionEvalResult == false) {
+    						// This is a logical AND. If it is already false,
+    						// we can optimize by skipping the rest of the
+    						// evals remaining in this subexpression layout list.
+    						skipRemainingEvals = true;
+    					}
+    				} else if(intraSubexpressionLogicalOperatorInUse == "||") {
+    					if(intraSubexpressionEvalResult == true) {
+    						// This is a logical OR. If it is already true,
+    						// we can optimize by skipping the rest of the
+    						// evals remaining in this subexpression layout list.
+    						skipRemainingEvals = true;
+    					}
+    				}
     			} else {
-    				// This is a successive eval result. We can combine it
+    				// This is a successive eval result within a
+    				// multi-part subexpression. We can combine it
     				// with the accumulated eval results thus far.
     				if(intraSubexpressionLogicalOperatorInUse == "&&") {
     					intraSubexpressionEvalResult =
@@ -6695,7 +7152,7 @@ namespace eval_predicate_functions {
 
 		// Allowed operations for rstring are these:
 		// ==, !=, contains, notContains, startsWith,
-		// notStartsWith, endsWith, notEndsWith
+		// notStartsWith, endsWith, notEndsWith,sizeXX
 		if(operationVerb == "==") {
 			subexpressionEvalResult = (lhsValue == rhsValue) ? true : false;
 		} else if(operationVerb == "!=") {
@@ -6770,6 +7227,54 @@ namespace eval_predicate_functions {
 					subexpressionEvalResult = true;
 				}
 			}
+		} else if(operationVerb == "sizeEQ") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize == rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeNE") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize != rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeLT") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize < rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeLE") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize <= rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeGT") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize > rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeGE") {
+			subexpressionEvalResult = false;
+			int32 lhsSize = Functions::String::length(lhsValue);
+			int32 rhsInt32 = atoi(rhsValue.c_str());
+
+			if(lhsSize >= rhsInt32) {
+				subexpressionEvalResult = true;
+			}
 		} else {
 			// Unsupported operation verb for rstring.
 			error = INVALID_RSTRING_OPERATION_VERB_FOUND_DURING_EXP_EVAL;
@@ -6809,6 +7314,44 @@ namespace eval_predicate_functions {
 			}
 		}
     } // End of performCollectionItemExistenceEvalOperations
+
+    // This function performs the eval operations to check for the
+    // size of a given collection type i.e. set, list, map.
+    void performCollectionSizeCheckEvalOperations(int32 const & lhsSize,
+    	int32 const & rhsInt32, rstring const & operationVerb,
+		boolean & subexpressionEvalResult, int32 & error) {
+    	error = ALL_CLEAR;
+    	subexpressionEvalResult = false;
+
+		if(operationVerb == "sizeEQ") {
+			if(lhsSize == rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeNE") {
+			if(lhsSize != rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeLT") {
+			if(lhsSize < rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeLE") {
+			if(lhsSize <= rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeGT") {
+			if(lhsSize > rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else if(operationVerb == "sizeGE") {
+			if(lhsSize >= rhsInt32) {
+				subexpressionEvalResult = true;
+			}
+		} else {
+			// Unsupported operation verb for collection size check.
+			error = INVALID_COLLECTION_SIZE_CHECK_OPERATION_VERB_FOUND_DURING_EXP_EVAL;
+		}
+    } // End of performCollectionSizeCheckEvalOperations
 
     // This function performs the evaluations for non-string based
     // LHS and RHS values for relationsal and arithmetic operations.
