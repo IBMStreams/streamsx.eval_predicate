@@ -9,11 +9,24 @@
 It evaluates a user defined rule (i.e. expression) represented as an rstring using the given tuple.
 @param expr User defined rule (expression) to be evaluated i.e. processed. Type: rstring
 @param myTuple A user defined tuple whose attributes the rule (expression) should refer to. Type: Tuple
-@param error  A mutable variable that will contain a non-zero error code if a rule processing error occurs. Type: int32
+@param error A mutable variable that will contain a non-zero error code if a rule processing error occurs. Type: int32
 @param trace A boolean value to enable tracing inside this function. Type: boolean
 @return It returns true when the rule evaluation i.e. processing is successful. Otherwise, it returns false.  Type: boolean
 		</description>
         <prototype>&lt;tuple T> public boolean eval_predicate(rstring expr, T myTuple, mutable int32 error, boolean trace)</prototype>
+      </function>
+      
+      <function>
+        <description>
+It fetches the value of a user given attribute name if it is present in the user given tuple.
+@param attributeName A user given fully qualified attribute name. Type: rstring
+@param myTuple A user defined tuple in which the user given attribute is present. Type: Tuple
+@param value A mutable variable in which the value of a user given attribute will be returned. Type: An appropriate type
+@param error A mutable variable that will contain a non-zero error code if an error occurs. Type: int32
+@param trace A boolean value to enable tracing inside this function. Type: boolean
+@return It returns nothing.  Type: void
+		</description>
+        <prototype>&lt;tuple T1, any T2> public void get_tuple_attribute_value(rstring attributeName, T1 myTuple, mutable T2 value, mutable int32 error, boolean trace)</prototype>
       </function>
     </functions>
     

@@ -3,7 +3,7 @@
 ## Purpose
 This toolkit offers an improved and a simpler facility for users to let their externally authored business rules to be consumed either statically or dynamically from within the IBM Streams SPL application code and then process (evaluate) them as the data flows through the application pipeline. Such an evaluation returns a true or false result for every rule that gets processed to indicate whether the rule expression criteria is met or not met.
 
-## Main feature
+## Major features
 It provides the following function that can be called from within the IBM Streams application code. This function is designed to use internal in-memory caching in order to be optimal when processing a rule that gets evaluated frequently inside a given IBM Streams Custom operator logic. Such caching is done on a per PE i.e. Linux process thread basis. In addition, it uses C++ reference pointers wherever possible to reduce the overall rule processing time by avoiding unnecessary data copy that can get expensive. 
 
 **eval_predicate** is a C++ native function provided via this toolkit. IBM Streams applications can add this toolkit as a dependency either via the -t Streams compiler option or by adding this toolkit directory path in the Streams Studio and/or the Microsoft Visual Studio Code. Once the dependency is in place, this function can be called from wherever it is needed within the application code.
@@ -52,6 +52,58 @@ if(result == true) {
 // It returns true if the rule evaluation criteria is met.
 // It returns false and error=0 if the rule evaluation criteria is not met.
 // It returns a non-zero error when there is an evaluation execution failure.
+```
+
+**get_tuple_attribute_value** is another C++ native function provided via this toolkit. This function fetches the value of a user given attribute name if present in a user given tuple. Any valid fully qualified attribute name can be given via a input string argument to this function.
+
+```
+// This namespace usage declaration is needed at the top of an application.
+use com.ibm.streamsx.eval_predicate::*;
+
+// Schema can include other deeply nested types.
+type Person_t = rstring name, rstring title, 
+   int32 id, rstring gender, set<rstring> skills;
+type Department_t = rstring name, rstring id, 
+   rstring manager, int32 employeeCnt;
+type Employee_t = Person_t employee, Department_t department;
+
+// Let us say that an incoming tuple holds the values as shown below. 
+mutable Employee_t myEmployee = {};
+myEmployee.employee.name = "Jill Doe";
+myEmployee.employee.title = "Software Engineer";
+myEmployee.employee.id = 452397;
+myEmployee.employee.gender = "Female";
+myEmployee.employee.skills = {"C++", "Java", "Python", "SPL"};
+myEmployee.department.name = "Process Optimization";
+myEmployee.department.id = "XJ825";
+myEmployee.department.manager = "Mary Williams";
+myEmployee.department.employeeCnt = 18;
+
+// Following code snippet shows how a Custom operator logic 
+// can fetch the value of a given tuple attribute.
+mutable int32 error = 0;
+// Get the full set<rstring> value of a given tuple attribute name.
+rstring attributeName = "employee.skills";
+mutable set<rstring> employeeSkills = {};
+get_tuple_attribute_value(attributeName, myEmployee,
+   employeeSkills, error, false);
+					
+if(error == 0) {
+   printStringLn("Tuple attribute value was fetched successfully.");				
+   printStringLn(attributeName + "=" + (rstring)employeeSkills);
+} else {
+   printStringLn("Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+}
+
+// Following is the usage description for the get_tuple_attribute_value function.
+//
+// Arg1: Fully qualified attribute name
+// Arg2: Your tuple
+// Arg3: A mutable variable of an appropriate type in which the
+//       value of a given attribute will be returned.
+// Arg4: A mutable int32 variable to receive non-zero error code if any.
+// Arg5: A boolean value to enable debug tracing inside this function.
+// It is a void function that returns nothing.
 ```
 
 ## Design considerations

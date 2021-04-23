@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/20/2021
+Last modified on: Apr/23/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -32,6 +32,13 @@ So, it is better to run this application in distributed mode with
 legacy fusion mode ON so that the results displayed from those two
 operators will appear in two separate PE console log files for an 
 easier viewing of the results from the evaluations.
+
+In addition to testing the rule expression processing,
+this application tests another feature of the eval_predicate
+toolkit i.e. how to get a value of a specific tuple attribute as
+that is expressed via a user provided string input.
+You can search below for get_tuple_attribute_value to
+see a few dozen different test cases on that topic.
 
 How can you build this test application?
 ----------------------------------------
@@ -58,6 +65,13 @@ composite FunctionalTests {
 		// eval_predicate function or not. [Useful for debugging.]
 		expression<boolean> $EVAL_PREDICATE_TRACING : 
 			(boolean)getSubmissionTimeValue("EvalPredicateTracing", "false");
+
+		// This constant can be used to specify whether the
+		// value of the tuple attribute fetched via the
+		// get_tuple_attribute_value should be displayed on 
+		// the console or not.
+		expression<boolean> $DISPLAY_FETCHED_ATTRIBUTE_VALUE : 
+			(boolean)getSubmissionTimeValue("DisplayFetchedAttributeValue", "true");
 			
 	type
 		// These are types or schema of the tuples that we will use to 
@@ -7891,5 +7905,879 @@ composite FunctionalTests {
 					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the UnhappyPathSink operator.
+		
+		// In this operator, we will do tests for getting
+		// tuple attribute values in different ways.
+		() as FetchValueSink = Custom(MyTestData as MTD) {
+			logic
+				state: {
+					// We will use these state variables.
+					mutable TestData_t _myTestData = {};
+					mutable rstring _attributeName = "";
+				}
+				
+				onTuple MTD: {
+					// Store it in the state.
+					_myTestData = MTD;
+					
+					// We will methodically do many tests for 
+					// getting tuple attribute values.
+					mutable int32 error = 0;
+					printStringLn("This operator tests the " +
+						"get_tuple_attribute_value function. " +
+						"It does both successful and failure test cases.");
+					
+					// -------------------------
+					// Get the value of a given tuple attribute name.
+					// Arg1: Fully qualified attribute name
+					// Arg2: Your tuple
+					// Arg3: A mutable variable of an appropriate type in which the
+					//       value of a given attribute will be returned.
+					// Arg4: A mutable int32 variable to receive non-zero error code if any.
+					// Arg5: A boolean value to enable debug tracing inside this function.
+					// It is a void method that returns nothing.
+					//		
+					// C1.1 (Get boolean value of a given attribute name)
+					_attributeName = "a.transport.plane.isBasedInUSA";
+					mutable boolean myVal1 = false;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal1, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.1: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal1);
+						}
+					} else {
+						printStringLn("Testcase C1.1: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+					
+					// C1.2 (Get int32 value of a given attribute name)
+					_attributeName = "a.transport.plane.numberOfPlants";
+					mutable int32 myVal2 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal2, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.2: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal2);
+						}
+					} else {
+						printStringLn("Testcase C1.2: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.3 (Get uint32 value of a given attribute name)
+					_attributeName = "a.transport.plane.startingYear";
+					mutable uint32 myVal3 = 0u;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal3, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.3: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal3);
+						}
+					} else {
+						printStringLn("Testcase C1.3: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+					
+					// C1.4 (Get int64 value of a given attribute name)
+					_attributeName = "a.transport.plane.planesMade";
+					mutable int64 myVal4 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal4, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.4: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal4);
+						}
+					} else {
+						printStringLn("Testcase C1.4: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+					
+					// C1.5 (Get uint64 value of a given attribute name)
+					_attributeName = "    a.transport.plane.countriesOfOperation   ";
+					mutable uint64 myVal5 = 0ul;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal5, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.5: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal5);
+						}
+					} else {
+						printStringLn("Testcase C1.5: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.6 (Get float32 value of a given attribute name)
+					_attributeName = "a.transport.plane.averagePrice";
+					mutable float32 myVal6 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal6, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.6: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal6);
+						}
+					} else {
+						printStringLn("Testcase C1.6: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.7 (Get float64 value of a given attribute name)
+					_attributeName = "a.transport.plane.averageProfit";
+					mutable float64 myVal7 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal7, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.7: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal7);
+						}
+					} else {
+						printStringLn("Testcase C1.7: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.8 (Get rstring value of a given attribute name)
+					_attributeName = "a.transport.plane.airliner";
+					mutable rstring myVal8 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal8, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.8: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal8);
+						}
+					} else {
+						printStringLn("Testcase C1.8: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.9 (Get the entire set<rstring> value of a given attribute name)
+					_attributeName = "a.transport.cars.models";
+					mutable set<rstring> myVal9 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal9, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.9: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal9);
+						}
+					} else {
+						printStringLn("Testcase C1.9: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.10 (Get the entire set<int32> value of a given attribute name)
+					_attributeName = "a.transport.cars.rpmRange";
+					mutable set<int32> myVal10 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal10, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.10: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal10);
+						}
+					} else {
+						printStringLn("Testcase C1.10: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.11 (Get the entire set<int64> value of a given attribute name)
+					_attributeName = "a.transport.cars.numberOfEnginesMade";
+					mutable set<int64> myVal11 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal11, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.11: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal11);
+						}
+					} else {
+						printStringLn("Testcase C1.11: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.12 (Get the entire set<float32> value of a given attribute name)
+					_attributeName = "a.transport.cars.secondsForZeroToSixty";
+					mutable set<float32> myVal12 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal12, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.12: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal12);
+						}
+					} else {
+						printStringLn("Testcase C1.12: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.13 (Get the entire set<float64> value of a given attribute name)
+					_attributeName = "a.transport.cars.maxEngineTemp";
+					mutable set<float64> myVal13 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal13, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.13: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal13);
+						}
+					} else {
+						printStringLn("Testcase C1.13: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.14 (Get list<rstring>[idx] value of a given attribute name)
+					_attributeName = "a.rack.hw.processorFamily[1]";
+					mutable rstring myVal14 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal14, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.14: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal14);
+						}
+					} else {
+						printStringLn("Testcase C1.14: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.15 (Get list<int32>[idx] value of a given attribute name)
+					_attributeName = "a.rack.hw.processorCoreCnt[2]";
+					mutable int32 myVal15 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal15, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.15: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal15);
+						}
+					} else {
+						printStringLn("Testcase C1.15: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.16 (Get list<int64>[idx] value of a given attribute name)
+					_attributeName = "a.rack.hw.l2CacheSize[4]";
+					mutable int64 myVal16 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal16, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.16: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal16);
+						}
+					} else {
+						printStringLn("Testcase C1.16: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.17 (Get list<float32>[idx] value of a given attribute name)
+					_attributeName = "a.rack.hw.estimatedPrice[2]";
+					mutable float32 myVal17 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal17, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.17: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal17);
+						}
+					} else {
+						printStringLn("Testcase C1.17: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.18 (Get list<float64>[idx] value of a given attribute name)
+					_attributeName = "a.rack.hw.revenueTarget[2]";
+					mutable float64 myVal18 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal18, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.18: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal18);
+						}
+					} else {
+						printStringLn("Testcase C1.18: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.19 (Get the entire list<int64> value of a given attribute name)
+					_attributeName = "a.rack.hw.l2CacheSize";
+					mutable list<int64> myVal19 = [];
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal19, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.19: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal19);
+						}
+					} else {
+						printStringLn("Testcase C1.19: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.20 (Get map<rstring,int32>[key] value of a given attribute name)
+					_attributeName = "  b.digital.sw.productNameToId  [  'You Chat'  ] ";
+					mutable int32 myVal20 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal20, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.20: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal20);
+						}
+					} else {
+						printStringLn("Testcase C1.20: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.21 (Get map<int32,rstring>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.productIdToName[98311]";
+					mutable rstring myVal21 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal21, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.21: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal21);
+						}
+					} else {
+						printStringLn("Testcase C1.21: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.22 (Get map<rstring,int64>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.productNameToOrderVolume['Star DB']";
+					mutable int64 myVal22 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal22, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.22: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal22);
+						}
+					} else {
+						printStringLn("Testcase C1.22: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.23 (Get map<int64,rstring>[key] value of a given attribute name)
+					_attributeName = "   b.digital.sw.orderVolumeToProductName   [  8438131  ]   ";
+					mutable rstring myVal23 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal23, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.23: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal23);
+						}
+					} else {
+						printStringLn("Testcase C1.23: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.24 (Get map<rstring,float32>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.productNameToProfitMargin   [  'You Chat'   ]    ";
+					mutable float32 myVal24 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal24, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.24: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal24);
+						}
+					} else {
+						printStringLn("Testcase C1.24: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.25 (Get map<float32,rstring>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.profitMarginToProductName[9529842.17]";
+					mutable rstring myVal25 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal25, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.25: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal25);
+						}
+					} else {
+						printStringLn("Testcase C1.25: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.26 (Get map<rstring,float64>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.productNameToRevenue['Star DB']";
+					mutable float64 myVal26 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal26, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.26: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal26);
+						}
+					} else {
+						printStringLn("Testcase C1.26: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.27 (Get map<float64,rstring>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.revenueToProductName  [  862348922.45   ]   ";
+					mutable rstring myVal27 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal27, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.27: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal27);
+						}
+					} else {
+						printStringLn("Testcase C1.27: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.28 (Get map<rstring,rstring>[key] value of a given attribute name)
+					_attributeName = "b.digital.sw.productNameToGuid  [  'You Chat'   ]   ";
+					mutable rstring myVal28 = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal28, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.28: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal28);
+						}
+					} else {
+						printStringLn("Testcase C1.28: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.29 (Get map<int32,int32>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.d  [  3  ]";
+					mutable int32 myVal29 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal29, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.29: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal29);
+						}
+					} else {
+						printStringLn("Testcase C1.29: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.30 (Get map<int32,int64>[key] value of a given attribute name)
+					_attributeName = "   b.integers.iw.e  [  13  ]  ";
+					mutable int64 myVal30 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal30, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.30: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal30);
+						}
+					} else {
+						printStringLn("Testcase C1.30: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.31 (Get map<int64,int32>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.f  [  14  ]";
+					mutable int32 myVal31 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal31, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.31: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal31);
+						}
+					} else {
+						printStringLn("Testcase C1.31: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.32 (Get map<int64,int64>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.g  [  21  ]";
+					mutable int64 myVal32 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal32, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.32: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal32);
+						}
+					} else {
+						printStringLn("Testcase C1.32: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.33 (Get map<int32,float32>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.h  [  25  ]";
+					mutable float32 myVal33 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal33, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.33: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal33);
+						}
+					} else {
+						printStringLn("Testcase C1.33: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.34 (Get map<int32,float64>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.i  [  29  ]";
+					mutable float64 myVal34 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal34, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.34: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal34);
+						}
+					} else {
+						printStringLn("Testcase C1.34: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.35 (Get map<int64,float32>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.j  [  35  ]";
+					mutable float32 myVal35 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal35, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.35: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal35);
+						}
+					} else {
+						printStringLn("Testcase C1.35: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.36 (Get map<int64,float64>[key] value of a given attribute name)
+					_attributeName = "b.integers.iw.k  [  41  ]";
+					mutable float64 myVal36 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal36, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.36: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal36);
+						}
+					} else {
+						printStringLn("Testcase C1.36: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.37 (Get map<float32,int32>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.l  [  28.95  ]";
+					mutable int32 myVal37 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal37, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.37: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal37);
+						}
+					} else {
+						printStringLn("Testcase C1.37: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.38 (Get map<float32,int64>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.m  [  36.17  ]";
+					mutable int64 myVal38 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal38, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.38: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal38);
+						}
+					} else {
+						printStringLn("Testcase C1.38: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.39 (Get map<float64,int32>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.n  [  30.76  ]";
+					mutable int32 myVal39 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal39, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.39: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal39);
+						}
+					} else {
+						printStringLn("Testcase C1.39: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.40 (Get map<float64,int64>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.o  [  40.27  ]";
+					mutable int64 myVal40 = 0l;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal40, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.40: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal40);
+						}
+					} else {
+						printStringLn("Testcase C1.40: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.41 (Get map<float32,float32>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.p  [  45.56  ]";
+					mutable float32 myVal41 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal41, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.41: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal41);
+						}
+					} else {
+						printStringLn("Testcase C1.41: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.42 (Get map<float32,float64>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.q  [  49.81  ]";
+					mutable float64 myVal42 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal42, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.42: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal42);
+						}
+					} else {
+						printStringLn("Testcase C1.42: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.43 (Get map<float64,float32>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.r  [  53.25  ]";
+					mutable float32 myVal43 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal43, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.43: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal43);
+						}
+					} else {
+						printStringLn("Testcase C1.43: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.44 (Get map<float64,float64>[key] value of a given attribute name)
+					_attributeName = "c.reals.fw.s  [  59.09  ]";
+					mutable float64 myVal44 = 0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal44, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.44: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal44);
+						}
+					} else {
+						printStringLn("Testcase C1.44: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.45 (Get the entire map<rstring,int64> value of a given attribute name)
+					_attributeName = "b.digital.sw.productNameToOrderVolume";
+					mutable map<rstring,int64> myVal45 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal45, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.45: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal45);
+						}
+					} else {
+						printStringLn("Testcase C1.45: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.46 (Get a list<TUPLE>[idx] value of a given tuple attribute name)
+					_attributeName = "weatherList[0].hourlyTemperatureMap";
+					mutable map<int64, float64> myVal46 = {};
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal46, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.46: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal46);
+						}
+					} else {
+						printStringLn("Testcase C1.46: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// C1.47 (Get the entire list<TUPLE> value of a given tuple attribute name)
+					_attributeName = "weatherList";
+					mutable list<Weather_t> myVal47 = [];
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						myVal47, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.47: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)myVal47);
+						}
+					} else {
+						printStringLn("Testcase C1.47: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+					// -------------------------
+					// Let us add below a few test cases for the
+					// get_tuple_attribute_value function where
+					// it will return an error.
+					//
+					// D1.1 (LHS_NOT_MATCHING_WITH_ANY_TUPLE_ATTRIBUTE 16)
+					_attributeName = "xyz";
+					mutable int32 errorVal1 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal1, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.1: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.1: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.2 (EMPTY_ATTRIBUTE_NAME_GIVEN_FOR_VALUE_FETCHING 131)
+					_attributeName = "";
+					mutable int32 errorVal2 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal2, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.2: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.2: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.3 (NON_SPACE_CHARACTER_FOUND_AFTER_A_VALID_ATTRIBUTE_NAME 132)
+					_attributeName = "a.transport.plane.isBasedInUSA xyz";
+					mutable boolean errorVal3 = false;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal3, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.3: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.3: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.4 (ATTRIBUTE_NAME_WITH_NO_VALID_CHARACTERS 133)
+					_attributeName = "              ";
+					mutable int32 errorVal4 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal4, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.4: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.4: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.5 (WRONG_TYPE_OF_ATTRIBUTE_PASSED_AS_FUNCTION_ARGUMENT_BY_CALLER 136)
+					_attributeName = "a.transport.plane.isBasedInUSA";
+					mutable int32 errorVal5 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal5, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.5: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.5: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.6 (INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE 101)
+					_attributeName = "a.rack.hw.estimatedPrice[297]";
+					mutable float32 errorVal6 = (float32)0.0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal6, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.6: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.6: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// D1.7 (INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE 102)
+					_attributeName = "c.reals.fw.l  [  84528.95  ]";
+					mutable int32 errorVal7 = 0;
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						errorVal7, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase D1.7: Tuple attribute value was fetched successfully.");
+					} else {
+						printStringLn("Testcase D1.7: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}					
+					// -------------------------
+				} // End of onTuple MTD.
+		} // End of the HappyPathSink operator.
 } // End of main composite.
  

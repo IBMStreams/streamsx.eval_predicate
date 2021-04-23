@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Apr/20/2021
+Last modified on: Apr/23/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -244,6 +244,15 @@ the built-in evalPredicate and my new eval_predicate in this file.
 #define INCOMPATIBLE_SIZE_GE_OPERATION_FOR_LHS_ATTRIB_TYPE 128
 #define RHS_VALUE_NO_MATCH_FOR_SIZEXX_OPERATION_VERB 129
 #define INVALID_COLLECTION_SIZE_CHECK_OPERATION_VERB_FOUND_DURING_EXP_EVAL 130
+#define EMPTY_ATTRIBUTE_NAME_GIVEN_FOR_VALUE_FETCHING 131
+#define NON_SPACE_CHARACTER_FOUND_AFTER_A_VALID_ATTRIBUTE_NAME 132
+#define ATTRIBUTE_NAME_WITH_NO_VALID_CHARACTERS 133
+#define ATTRIBUTE_NAME_NOT_GOOD_FOR_VALIDATION 134
+#define EMPTY_ATTRIBUTE_NAME_LAYOUT_LIST_DURING_VALUE_FETCH 135
+#define WRONG_TYPE_OF_ATTRIBUTE_PASSED_AS_FUNCTION_ARGUMENT_BY_CALLER 136
+#define ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALUE_FETCH 137
+#define UNSUPPORTED_EVAL_CONDITION_DETECTED 138
+#define UNSUPPORTED_FETCH_ATTRIBUTE_VALUE_CONDITION_DETECTED 139
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -427,20 +436,38 @@ namespace eval_predicate_functions {
 	// Check if the next non-space character is a close parenthesis.
 	boolean isNextNonSpaceCharacterCloseParenthesis(blob const & myBlob,
 		int32 const & idx, int32 const & stringLength);
-	// This function gets the relevant details about the
+	// This method gets the relevant details about the
 	// nested subexpression group.
 	void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
 		SPL::list<rstring> const & subexpressionIdsList,
 		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
 		int32 & subexpressionCntInCurrentNestedGroup,
 		rstring & intraNestedSubexpressionLogicalOperator);
+	// This method fetches the value of a user given
+	// attribute present in a user given tuple.
+	template<class T1, class T2>
+	void get_tuple_attribute_value(rstring const & attributeName,
+		T1 const & myTuple, T2 & value, int32 & error, boolean const & trace);
+	// This method validates the user given attribute name for
+	// its syntax correctness.
+    boolean validateTupleAttributeName(rstring const & attributeName,
+        SPL::map<rstring, rstring> const & tupleAttributesMap,
+    	SPL::list<rstring> & attributeNameLayoutList,
+    	int32 & error, int32 & validationStartIdx, boolean trace);
+    // This method fetches the value of a given tuple attribute name.
+    template<class T1, class T2>
+    void fetchTupleAttributeValue(rstring const & attributeName,
+    	SPL::map<rstring, rstring> const & tupleAttributesMap,
+		SPL::list<rstring> const & attributeNameLayoutList,
+		T1 const & myTuple, T2 & value, int32 & error, boolean trace);
+
     // ====================================================================
+
 	// Evaluate a given expression.
     // Example expressions:
     // a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
     // (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
-    // Allowed operators: Look at the documentation for the
-    // Import operator's filter parameter.
+    // Allowed operators: logical, relational, arithmetic and special operators.
     //
 	// Evaluate an expression.
 	// Arg1: Expression
@@ -2398,7 +2425,8 @@ namespace eval_predicate_functions {
 							return(false);
 						}
 
-						if(myBlob[idx + lengthOfAttributeName] != ' ' &&
+						if((idx + lengthOfAttributeName) < stringLength &&
+							myBlob[idx + lengthOfAttributeName] != ' ' &&
 							myBlob[idx + lengthOfAttributeName] != '[' &&
 							myBlob[idx + lengthOfAttributeName] != '=' &&
 							myBlob[idx + lengthOfAttributeName] != '!' &&
@@ -2408,7 +2436,7 @@ namespace eval_predicate_functions {
 							myBlob[idx + lengthOfAttributeName] != '-' &&
 							myBlob[idx + lengthOfAttributeName] != '*' &&
 							myBlob[idx + lengthOfAttributeName] != '/' &&
-							myBlob[idx + lengthOfAttributeName] != '%' ) {
+							myBlob[idx + lengthOfAttributeName] != '%') {
 							// This means, we only had a partial attribute name match.
 							// Let us continue the loop and look for finding an
 							// exact match with some other attribute name in the given tuple.
@@ -3167,7 +3195,7 @@ namespace eval_predicate_functions {
 					cout << "==== END eval_predicate trace 6a ====" << endl;
 				} // End of if(trace == true)
 
-				// Continue with the main whie loop.
+				// Continue with the main while loop.
 				continue;
     		} // End of if(lhsFound == false)
 
@@ -4756,8 +4784,8 @@ namespace eval_predicate_functions {
     	// We can find everything we need to perform the evaluation inside the
     	// eval plan class passed to this function. It contains the following members.
     	//
-		// rstring expression  --> Not needed for the eval logic below.
-		// rstring tupleSchema  --> Not needed for the eval logic below.
+		// rstring expression  --> Needed when evaluation is needed for list<TUPLE>.
+		// rstring tupleSchema  --> Not needed.
 		// SPL::map<rstring, SPL::list<rstring> > subexpressionsMap  --> Needed very much.
 		// SPL::list<rstring> subexpressionsMapKeys  --> Needed very much.
     	// SPL::map<rstring, rstring> intraNestedSubexpressionLogicalOperatorsMap  --> Needed very much.
@@ -6642,6 +6670,7 @@ namespace eval_predicate_functions {
 						arithmeticOperandValue,
 						postArithmeticOperationVerb,
 						subexpressionEvalResult, error);
+        			// ****** list<TUPLE> evaluations ******
         		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0  &&
         			listIndexOrMapKeyValue == "") {
         			// This is a list<TUPLE> with no index value.
@@ -6863,6 +6892,9 @@ namespace eval_predicate_functions {
 						delete lotEvalPlanPtr;
 						break;
         			} // End of while loop
+        		} else {
+        			// Unsupported evaluation condition.
+        			error = UNSUPPORTED_EVAL_CONDITION_DETECTED;
         		} // End of the many if conditional blocks for different eval checks.
 
     			// Check the evaluation error status.
@@ -7735,6 +7767,1849 @@ namespace eval_predicate_functions {
 		}
 	} // End of getNestedSubexpressionGroupInfo
 
+	// This function fetches the value of a user given
+	// attribute present in a user given tuple. This function can be
+	// directly called from an SPL application code.
+	//
+    // Example tuple attribute names:
+    // "symbol"
+	// "employee.skills"
+	// "stats.numberOfSchools"
+	// "details.location.geo.latitude"
+	// "details.location.info.officials"
+    //
+	// Get the value of a given tuple attribute name.
+	// Arg1: Fully qualified attribute name
+	// Arg2: Your tuple
+	// Arg3: A mutable variable of an appropriate type in which the
+	//       value of a given attribute will be returned.
+	// Arg4: A mutable int32 variable to receive non-zero error code if any.
+	// Arg5: A boolean value to enable debug tracing inside this function.
+	// It is a void method that returns nothing.
+	//
+	template<class T1, class T2>
+	inline void get_tuple_attribute_value(rstring const & attributeName,
+		T1 const & myTuple, T2 & value, int32 & error, boolean const & trace) {
+	    boolean result = false;
+    	error = ALL_CLEAR;
+
+    	// Check if there is some content in the given attribute name.
+    	if(Functions::String::length(attributeName) == 0) {
+    		error = EMPTY_ATTRIBUTE_NAME_GIVEN_FOR_VALUE_FETCHING;
+    		return;
+    	}
+
+    	// Get the string literal of a give tuple.
+		// Example of myTuple's schema:
+		// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
+		//
+    	rstring myTupleSchema = getSPLTypeName(myTuple, trace);
+
+    	if(myTupleSchema == "") {
+    		// This should never occur. If it happens in
+    		// extremely rare cases, we have to investigate the
+    		// tuple literal schema generation function.
+    		error = TUPLE_LITERAL_SCHEMA_GENERATION_ERROR;
+    		return;
+    	}
+
+		// Let us parse the individual attributes of the given tuple and
+    	// store them in a map.
+		SPL::map<rstring, rstring> tupleAttributesMap;
+		result = parseTupleAttributes(myTupleSchema,
+			tupleAttributesMap, error, trace);
+
+		if(result == false) {
+			return;
+		}
+
+		// Let us now validate the user given attribute name for
+		// its syntax correctness.
+		SPL::list<rstring> attributeNameLayoutList;
+		// We are making a non-recursive call. So, start from
+		// the very first index i.e. index 0 of the given attribute name.
+		int32 validationStartIdx = 0;
+		result = validateTupleAttributeName(attributeName,
+			tupleAttributesMap, attributeNameLayoutList,
+		    error, validationStartIdx, trace);
+
+		if(result == false) {
+			return;
+		}
+
+		// We can now do the final step in getting the tuple attribute value.
+		// Let us now look deep inside of this tuple and fetch the
+		// value of a given attribute.
+	    fetchTupleAttributeValue(attributeName, tupleAttributesMap,
+	    	attributeNameLayoutList, myTuple, value, error, trace);
+    } // End of get_tuple_attribute_value
+
+	// This method validates the user given tuple attribute name for
+	// its syntax correctness. It is called from the
+	// get_tuple_attribute_value method above.
+    boolean validateTupleAttributeName(rstring const & attributeName,
+        SPL::map<rstring, rstring> const & tupleAttributesMap,
+    	SPL::list<rstring> & attributeNameLayoutList,
+    	int32 & error, int32 & validationStartIdx, boolean trace=false) {
+    	error = ALL_CLEAR;
+
+    	// This method will do its work and keep populating the
+    	// attribute name layout list which is passed as an
+    	// input reference argument.
+    	//
+    	// This method will get called recursively when a list<TUPLE> is
+    	// encountered in a given attribute name. In that case, the
+    	// validationStartIdx method argument will tell us where to
+    	// start the validation from. In a non-recursive call into
+    	// this method, validationStartIdx is set to 0 to start the
+    	// validation from the beginning of the attribute name.
+    	// It is important to note that the recursive caller must always pass
+    	// its own newly formed local variables as method arguments here so as
+    	// not to overwrite the original reference pointers passed by the
+    	// very first caller who made the initial non-recursive call.
+    	//
+    	// When fetching the value of an attribute name involving a list<TUPLE>,
+    	// our fetchTupleAttributeValue method available later in this file will
+    	// also call this validation method in a non-recursive manner. Since it
+    	// has to get value of only that single TUPLE attribute, it will only
+    	// send that single TUPLE attribute string on its own starting at index 0.
+    	// That method will set the validationStartIdx to 0. That is perfectly
+    	// fine for doing a one shot single TUPLE attribute validation.
+    	// The main purpose there is to build the attribute name layout list for
+    	// that TUPLE attribute involving a list<TUPLE> as that is a
+    	// key component in getting the attribute value.
+    	//
+    	// So, there is nothing to be concerned about the way this method will get
+    	// called in a few special ways as explained above in those two paragraphs.
+    	//
+    	// Get a blob representation of the attribute name.
+    	SPL::blob myBlob = Functions::String::convertToBlob(attributeName);
+    	int32 stringLength = Functions::String::length(attributeName);
+    	uint8 currentChar = 0, previousChar = 0;
+
+    	// At this time, we can validate the given attribute name.
+    	int32 idx = 0;
+    	boolean lhsFound = false;
+    	boolean lhsSubscriptForListAndMapAdded = false;
+    	//
+    	// Please note that this function receives a reference to a
+    	// list as an argument where it will keep storing all the
+    	// tuple attribute related details. That list is an important one which
+    	// acts as a structure describing the composition of the
+    	// given tuple attribute. Its structure is as explained here.
+		//
+    	// This list describes the composition of a tuple attribute.
+    	// Structure of such a list will go something like this:
+    	// This list will have a sequence of rstring items as shown below.
+    	// LHSAttribName
+    	// LHSAttribType
+    	// ListIndexOrMapKeyValue  - When N/A, it will have an empty string.
+    	// Optional entry for list<TUPLE> attribute name start index - When N/A, this entry will not be there.
+    	// Optional entry for list<TUPLE> attribute name end index - When N/A, this entry will not be there.
+    	//
+    	// If this method is being called recursively, we can
+    	// directly go to validate the attribute name to which
+    	// the caller must have set the validation start index.
+    	if(validationStartIdx > 0) {
+    		idx = validationStartIdx;
+    	}
+
+    	// Stay in this loop and validate the tuple attribute name and
+    	// keep building the attribute name layout list structure which will be
+    	// useful in the next major step in another function.
+    	while(idx < stringLength) {
+    		if(idx > 0) {
+    			previousChar = myBlob[idx-1];
+    		}
+
+       		currentChar = myBlob[idx];
+
+    		// If it is a space character, move to the next position.
+    		if(currentChar == ' ') {
+    			idx++;
+    			continue;
+    		}
+
+    		// If we have not yet found the lhs i.e. the tuple attribute name,
+    		// let us try to match with what is allowed based on the user given tuple.
+    		// e-g:
+    		// weatherList[0].sunnyDay
+    		// stats.numberOfSchools
+    		// roadwayNumbers[5]
+    		// details.location.geo.latitude
+    		// details.location.info.officials['abc']
+    		if(lhsFound == false) {
+    			rstring lhsAttribName = "";
+    			rstring lhsAttribType = "";
+    			lhsSubscriptForListAndMapAdded = false;
+				ConstMapIterator it = tupleAttributesMap.getBeginIterator();
+
+				while (it != tupleAttributesMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<rstring,rstring> const & myRStringRString = myVal;
+					lhsAttribName = myRStringRString.first;
+					lhsAttribType = myRStringRString.second;
+
+					int idx2 = Functions::String::findFirst(attributeName, lhsAttribName, idx);
+
+					if(idx2 == idx) {
+						// We must ensure that it is an exact match.
+						// That means at the end of this attribute name,
+						// we can only have either a space or a [ character.
+						int32 lengthOfAttributeName =
+							Functions::String::length(lhsAttribName);
+
+						if((idx + lengthOfAttributeName) < stringLength &&
+							myBlob[idx + lengthOfAttributeName] != ' ' &&
+							myBlob[idx + lengthOfAttributeName] != '[') {
+							// This means, we only had a partial attribute name match.
+							// Let us continue the loop and look for finding an
+							// exact match with some other attribute name in the given tuple.
+							//
+							// This line is here to debug when an LHS gets
+							// matched partially with a tuple attribute name.
+							if(trace == true) {
+								cout << "_TTTTT_ ^" <<
+									myBlob[idx + lengthOfAttributeName] <<
+									"^ AttribName=" << lhsAttribName << endl;
+							}
+
+							// Increment the map iterator before continuing the loop.
+							it++;
+							continue;
+						}
+
+						// We have a good start in finding an attribute.
+						// Add the lhs tuple attribute name and
+						// its type to the attribute name layout list.
+				    	// This list will have a sequence of rstring items as shown below.
+				    	// LHSAttribName
+				    	// LHSAttribType
+				    	// ListIndexOrMapKeyValue  - When N/A, it will have an empty string.
+				    	// Optional entry for list<TUPLE> attribute name start index - When N/A, this entry will not be there.
+				    	// Optional entry for list<TUPLE> attribute name end index - When N/A, this entry will not be there.
+				    	//
+						// e-g:
+			    		// weatherList[0].sunnyDay
+			    		// stats.numberOfSchools
+			    		// roadwayNumbers[5]
+			    		// details.location.geo.latitude
+			    		// details.location.info.officials['abc']
+						Functions::Collections::appendM(attributeNameLayoutList,
+							lhsAttribName);
+						Functions::Collections::appendM(attributeNameLayoutList,
+							lhsAttribType);
+						// If it is list or map, we must ensure that the next
+						// character sequence is [3] for list and
+						// ["xyz"] or [123] or [12.34]  for map.
+						// Move the idx past the end of the matching attribute name.
+						idx += Functions::String::length(lhsAttribName);
+
+						// If we have a list, it can be for list of
+						// SPL built-in data types or for list<TUPLE>.
+						// We will process both of them here.
+						// If it is a list<TUPLE>, then we will do additional
+						// validation of the attribute access inside of
+						// that tuple in a different code block outside of
+						// this if block.
+						if(Functions::String::findFirst(lhsAttribType, "list") == 0) {
+							// We must ensure that it has [n] following it.
+							// The next character we find must be open square bracket [.
+							boolean openSquareBracketFound = false;
+
+							while(idx < stringLength) {
+								// Skip any space characters preceding the [ character.
+								if(myBlob[idx] == ' ') {
+									idx++;
+									continue;
+								} else if(myBlob[idx] == '[') {
+									openSquareBracketFound = true;
+									break;
+								} else {
+									// A non-space or non-[ character found which is not valid.
+									if(Functions::String::findFirst(lhsAttribType, "list<tuple<" ) == 0) {
+										error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST_OF_TUPLE;
+									} else {
+										error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST;
+									}
+
+									return(false);
+								}
+
+								idx++;
+							} // End of inner while loop.
+
+							if(openSquareBracketFound == false) {
+								// This is allowed if the user wants to
+								// get the value of the entire list instead of
+								// just a single element from the list.
+								// Insert an empty string in the attribute name
+								// layout list to indicate that we don't have
+								// a list or map index.
+								rstring str = "";
+								Functions::Collections::appendM(attributeNameLayoutList, str);
+								// We completed the validation of the lhs.
+								lhsFound = true;
+								// We can break out of the inner while loop that
+								// iterates over the tuple attributes map so that
+								// we can finish validating the attribute name.
+								break;
+							} // End of if(openSquareBracketFound == false)
+
+							// After the open square bracket, we can have a
+							// number as the list index.
+							// Move past the open square bracket.
+							idx++;
+							boolean allNumeralsFound = false;
+							boolean closeSquareBracketFound = false;
+							boolean spaceFoundAfterListIndexValue = false;
+							rstring listIndexValue =  "";
+
+							// Let us ensure that we see all numerals until we see a
+							// close square bracket ].
+							while(idx < stringLength) {
+								if(myBlob[idx] == ']') {
+									// Reset this flag.
+									spaceFoundAfterListIndexValue = false;
+									closeSquareBracketFound = true;
+									break;
+								}
+
+								if(myBlob[idx] == ' ') {
+									// We will skip all spaces between [].
+									// We will allow spaces only before and after
+									// the list index value.
+									if(listIndexValue != "") {
+										spaceFoundAfterListIndexValue = true;
+									}
+
+									idx++;
+									continue;
+								} else if(myBlob[idx] < '0' || myBlob[idx] > '9') {
+									// A non-numeral found.
+									allNumeralsFound = false;
+									break;
+								} else {
+									// If we are observing spaces in between numeral
+									// characters, then that is not valid.
+									if(spaceFoundAfterListIndexValue == true) {
+										allNumeralsFound = false;
+										break;
+									}
+
+									allNumeralsFound = true;
+									listIndexValue += myBlob[idx];
+								}
+
+								idx++;
+							} // End of inner while loop.
+
+							if(spaceFoundAfterListIndexValue == true) {
+								error = SPACE_MIXED_WITH_NUMERALS_IN_LIST_INDEX;
+								return(false);
+							}
+
+							if(allNumeralsFound == false) {
+								error = ALL_NUMERALS_NOT_FOUND_AS_LIST_INDEX;
+								return(false);
+							}
+
+							if(closeSquareBracketFound == false) {
+								error = CLOSE_SQUARE_BRACKET_NOT_FOUND_AFTER_LIST;
+								return(false);
+							}
+
+							// This list attribute is now fully validated.
+							// Move past the ] character.
+							idx++;
+							// We can insert the list index into our attribute name layout list.
+							Functions::Collections::appendM(attributeNameLayoutList,
+								listIndexValue);
+							lhsSubscriptForListAndMapAdded = true;
+						} // End of if block checking list attribute's [n]
+
+						// If it is a list<TUPLE>, let us now do additional
+						// validation for the attribute access within the
+						// tuple held inside a given list.
+						// e-g: Body.MachineStatus.ComponentList[0].Component["MapKey"] == "MapValue"
+						if(Functions::String::findFirst(lhsAttribType, "list<tuple<") == 0) {
+							// This must be a . i.e. period character to indicate that a
+							// tuple attribute access is being made.
+							if(idx < stringLength && myBlob[idx] != '.') {
+								// No period found for tuple attribute access.
+								error = NO_PERIOD_FOUND_AFTER_LIST_OF_TUPLE;
+								return(false);
+							}
+
+							// Move past the period character.
+							idx++;
+
+							// Use of "lot" in the local variable names below means List Of Tuple.
+		    				// We can now get the attributes of the tuple held
+							// inside a list<TUPLE>.
+		    				//
+		    				int32 lotSchemaLength =
+		    					Functions::String::length(lhsAttribType);
+
+		    				// Get the tuple<...> part from this attribute's type.
+		    				// We have to skip the initial "list<" portion in the type string.
+		    				// We also have to skip the final > in the type string that
+		    				// is a closure for "list<" i.e. we start from the
+		    				// zero based index 5 and take the substring until the
+		    				// end except for the final > which in total is 6 characters
+		    				// less than the entire type string.
+		    				rstring lotTupleSchema =
+		    					Functions::String::substring(lhsAttribType,
+								5, lotSchemaLength-6);
+		    				SPL::map<rstring, rstring> lotTupleAttributesMap;
+		    				int32 lotError = 0;
+		    				boolean lotResult = parseTupleAttributes(lotTupleSchema,
+		    					lotTupleAttributesMap, lotError, trace);
+
+		    				if(lotResult == false) {
+		    					// This error should never happen since we
+		    					// already passed this check even before
+		    					// coming into this validation method.
+		    					// We are simply doing it here as a safety measure.
+		    					error = ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALIDATION;
+
+		    					if(trace == true) {
+			    					cout << "It failed to get the list<TUPLE> attributes for " <<
+			    						lhsAttribName <<
+										" during attribute name validation. Error=" << lotError <<
+										". Tuple schema=" << lotTupleSchema << endl;
+		    					}
+
+		    					return(false);
+		    				}
+
+							// We got the LOT tuple attributes.
+							// We can recursively call the current
+							// method that we are in now to validate the
+							// tuple attribute access involving a list<TUPLE>.
+							if(trace == true) {
+								cout << "BEGIN Recursive validate attribute name call for list<TUPLE> " <<
+									lhsAttribName << "." << endl;
+							}
+
+							SPL::list<rstring> lotAttributeNameLayoutList;
+							// It is a recursive call. So, we can tell this method to
+							// start the validation at a specific position in the
+							// attribute name instead of from index 0. It can be done by
+							// setting the following variable to a non-zero value.
+							validationStartIdx = idx;
+							// We will also store the index where the
+							// attribute name involving a list<TUPLE> starts for another
+							// use at the end of this additional processing we are
+							// doing here for a list<TUPLE>.
+							int32 lotAttributeNameStartIdx = idx;
+							lotResult = validateTupleAttributeName(attributeName, lotTupleAttributesMap,
+								lotAttributeNameLayoutList, error,
+								validationStartIdx, trace);
+
+							if(trace == true) {
+								cout << "END Recursive validate attribute name call for list<TUPLE> " <<
+									lhsAttribName << "." << endl;
+							}
+
+							if(lotResult == false) {
+								// There was a validation error in the recursive call.
+								return(false);
+							}
+
+							// Now that the recursive call is over, we can set idx to a
+							// position up to which the recursive call did the validation.
+							idx = validationStartIdx;
+							// We must reset it now.
+							validationStartIdx = 0;
+							// At this point, we correctly validated the
+							// attribute name involving a list<TUPLE>.
+							// In the recursive call we just returned back from,
+							// it has already successfully completed the
+							// validation for LHS attribute name.
+							// So, we can set it as cleanly completed.
+			    			lhsFound = true;
+			    			//
+			    			// LHSAttribName
+			    			// LHSAttribType
+			    			// ListIndexOrMapKeyValue  - When N/A, it will have an empty string.
+			    	    	// Optional entry for list<TUPLE> attribute name start index - When N/A, this entry will not be there.
+			    	    	// Optional entry for list<TUPLE> attribute name end index - When N/A, this entry will not be there.
+			    			//
+			    			// Just because this is a list<TUPLE>, we already
+			    			// appended a value for the list index entry of
+			    			// the attribute name layout list in the previous
+			    			// if code block for close bracket detection.
+			    			// Now, we can fill the lotAttributeNameStartIdx in
+			    			// the attribute name layout list as the next item.
+			    			// We will also store the current idx position where
+			    			// LOT attribute name ends as the last item in that list.
+			    			// These two values will be used later inside
+			    			// the fetchTupleAttributeValue method. This is so important for
+			    			// fetching an attribute value involving a list<TUPLE>.
+					    	ostringstream lotAttribStartIdx;
+					    	lotAttribStartIdx << lotAttributeNameStartIdx;
+					    	rstring myValueString = lotAttribStartIdx.str();
+							Functions::Collections::appendM(attributeNameLayoutList, myValueString);
+					    	// RHS entry.
+					    	ostringstream lotAttribEndIdx;
+					    	lotAttribEndIdx << idx;
+					    	myValueString = lotAttribEndIdx.str();
+							Functions::Collections::appendM(attributeNameLayoutList, myValueString);
+						} // End of the additional validation for list<TUPLE>
+
+						if(Functions::String::findFirst(lhsAttribType, "map") == 0) {
+							// It is a map. We must ensure that it has a valid access scheme following it.
+							// We support only very specific things here.
+							// e-g: [3], ["xyz"], [45.23]
+							// The next character we find must be open square bracket [.
+							boolean openSquareBracketFound = false;
+
+							while(idx < stringLength) {
+								// Skip any space characters preceding the [ character.
+								if(myBlob[idx] == ' ') {
+									idx++;
+									continue;
+								} else if(myBlob[idx] == '[') {
+									openSquareBracketFound = true;
+									break;
+								} else {
+									// A non-space or non-[ character found which is not valid.
+									error = OPEN_SQUARE_BRACKET_NOT_FOUND_AFTER_MAP;
+									return(false);
+								}
+
+								idx++;
+							} // End of inner while loop.
+
+							if(openSquareBracketFound == false) {
+								// This is allowed if the user wants to
+								// get the value of the entire map instead of
+								// just a single element from the map.
+								// Insert an empty string in the attribute name
+								// layout list to indicate that we don't have
+								// a list or map index.
+								rstring str = "";
+								Functions::Collections::appendM(attributeNameLayoutList, str);
+								// We completed the validation of the lhs.
+								lhsFound = true;
+								// We can break out of the inner while loop that
+								// iterates over the tuple attributes map so that
+								// we can finish validating the attribute name.
+								break;
+							} // End of if(openSquareBracketFound == false)
+
+							// After the open square bracket, we can have an
+							// integer or a float or a string as the map key.
+							boolean intMapKey = false;
+							boolean floatMapKey = false;
+							boolean stringMapKey = false;
+
+							if(Functions::String::findFirst(lhsAttribType, "map<int") == 0) {
+								intMapKey = true;
+							} else if(Functions::String::findFirst(lhsAttribType, "map<float") == 0) {
+								floatMapKey = true;
+							} else if(Functions::String::findFirst(lhsAttribType, "map<rstring") == 0) {
+								stringMapKey = true;
+							} else {
+								error = UNSUPPORTED_KEY_TYPE_FOUND_IN_MAP;
+								return(false);
+							}
+
+							// Move past the open square bracket.
+							idx++;
+							boolean allNumeralsFound = false;
+							int decimalPointCnt = 0;
+							boolean openQuoteFound = false;
+							boolean closeQuoteFound = false;
+							boolean invalidStringCharacterFound = false;
+							boolean stringCharacterFoundAfterCloseQuote = false;
+							boolean spaceFoundAfterMapValue = false;
+							boolean closeSquareBracketFound = false;
+							rstring mapKeyValue =  "";
+
+							// Let us ensure that we see all numerals until we see a
+							// close square bracket ].
+							while(intMapKey == true && idx < stringLength) {
+								if(myBlob[idx] == ']') {
+									// Reset this flag.
+									spaceFoundAfterMapValue = false;
+									closeSquareBracketFound = true;
+									break;
+								}
+
+								if(myBlob[idx] == ' ') {
+									// We will skip all spaces between [].
+									// We will allow spaces only before and after
+									// the map key value.
+									if(mapKeyValue != "") {
+										spaceFoundAfterMapValue = true;
+									}
+
+									idx++;
+									continue;
+								} else if(myBlob[idx] < '0' || myBlob[idx] > '9') {
+									// Since it is an integer map key, we can allow
+									// negative sign as the first character of the key.
+									if(mapKeyValue == "" && myBlob[idx] == '-') {
+										// We can allow this.
+										mapKeyValue = "-";
+									} else {
+										// A non-numeral character found.
+										allNumeralsFound = false;
+										break;
+									}
+								} else {
+									// If we are observing spaces in between numeral
+									// characters, then that is not valid.
+									if(spaceFoundAfterMapValue == true) {
+										allNumeralsFound = false;
+										break;
+									}
+
+									allNumeralsFound = true;
+									mapKeyValue += myBlob[idx];
+								}
+
+								idx++;
+							} // End of inner while loop validating int map key.
+
+							if(intMapKey == true && spaceFoundAfterMapValue == true) {
+								error = SPACE_MIXED_WITH_NUMERALS_IN_INT_MAP_KEY;
+								return(false);
+							}
+
+							if(intMapKey == true && allNumeralsFound == false) {
+								error = ALL_NUMERALS_NOT_FOUND_IN_INT_MAP_KEY;
+								return(false);
+							}
+
+							if(intMapKey == true && closeSquareBracketFound == false) {
+								error = CLOSE_SQUARE_BRACKET_NOT_FOUND_IN_INT_MAP_KEY;
+								return(false);
+							}
+
+							// Let us ensure that we see all numerals with a single
+							// decimal point until we see a close square bracket ].
+							while(floatMapKey == true && idx < stringLength) {
+								if(myBlob[idx] == ']') {
+									// Reset this flag.
+									spaceFoundAfterMapValue = false;
+									closeSquareBracketFound = true;
+									break;
+								}
+
+								if(myBlob[idx] == ' ') {
+									// We will skip all spaces between [].
+									// We will allow spaces only before and after
+									// the map key value.
+									if(mapKeyValue != "") {
+										spaceFoundAfterMapValue = true;
+									}
+
+									idx++;
+									continue;
+								} else if(myBlob[idx] < '0' || myBlob[idx] > '9') {
+									// If it is not a numeral, we can only allow
+									// only one decimal point either in the beginning or
+									// in the middle or in the end of the given numeral value.
+									if(myBlob[idx] == '.' ) {
+										if(decimalPointCnt < 1) {
+											// One decimal point is allowed for a float map key.
+											decimalPointCnt++;
+											// Add this decimal point to the map key value.
+											mapKeyValue += ".";
+										} else {
+											// We are seeing more than one decimal point.
+											// This is not allowed.
+											decimalPointCnt++;
+											break;
+										}
+									} else {
+										// Since it is a float, we can allow - sign as the
+										// first character in the key.
+										if(mapKeyValue == "" && myBlob[idx] == '-') {
+											mapKeyValue = "-";
+										} else {
+											// A non-numeral and a non-decimal point found.
+											allNumeralsFound = false;
+											break;
+										}
+									}
+								} else {
+									// If we are observing spaces in between numeral
+									// characters, then that is not valid.
+									if(spaceFoundAfterMapValue == true) {
+										allNumeralsFound = false;
+										break;
+									}
+
+									allNumeralsFound = true;
+									mapKeyValue += myBlob[idx];
+								}
+
+								idx++;
+							} // End of inner while loop validating float map key.
+
+							if(floatMapKey == true && spaceFoundAfterMapValue == true) {
+								error = SPACE_MIXED_WITH_NUMERALS_IN_FLOAT_MAP_KEY;
+								return(false);
+							}
+
+							if(floatMapKey == true && allNumeralsFound == false) {
+								error = ALL_NUMERALS_NOT_FOUND_IN_FLOAT_MAP_KEY;
+								return(false);
+							}
+
+							if(floatMapKey == true && decimalPointCnt == 0) {
+								// Missing decimal point in the float map key.
+								error = MISSING_DECIMAL_POINT_IN_FLOAT_MAP_KEY;
+								return(false);
+							}
+
+							if(floatMapKey == true && decimalPointCnt > 1) {
+								// More than one decimal point in the float map key.
+								error = MORE_THAN_ONE_DECIMAL_POINT_IN_FLOAT_MAP_KEY;
+								return(false);
+							}
+
+							if(floatMapKey == true && closeSquareBracketFound == false) {
+								error = CLOSE_SQUARE_BRACKET_NOT_FOUND_IN_FLOAT_MAP_KEY;
+								return(false);
+							}
+
+							// Let us ensure that we see a quoted string until we see a
+							// close square bracket ].
+							while(stringMapKey == true && idx < stringLength) {
+								if(myBlob[idx] == ']') {
+									closeSquareBracketFound = true;
+									break;
+								}
+
+								if(myBlob[idx] == ' ' &&
+									(openQuoteFound == false || closeQuoteFound == true)) {
+									// We will skip all spaces between [].
+									idx++;
+									continue;
+								} else if(myBlob[idx] == '"' || myBlob[idx] == '\'') {
+									if(openQuoteFound == false) {
+										openQuoteFound = true;
+									} else if(closeQuoteFound == false) {
+										closeQuoteFound = true;
+									} else {
+										stringCharacterFoundAfterCloseQuote = true;
+										break;
+									}
+								} else if(myBlob[idx] < ' ' || myBlob[idx] > '~') {
+									// A non-string character found.
+									invalidStringCharacterFound = true;
+									break;
+								} else {
+									// If we already encountered open and close quotes,
+									// then we can't allow any other characters as
+									// part of this string.
+									if(openQuoteFound == true && closeQuoteFound == true) {
+										stringCharacterFoundAfterCloseQuote = true;
+										break;
+									}
+
+									// If we see a map key character before encountering
+									// an open quote character, then it is invalid.
+									if(openQuoteFound == false) {
+										break;
+									}
+
+									mapKeyValue += myBlob[idx];
+								}
+
+								idx++;
+							} // End of inner while loop validating string map key.
+
+							if(stringMapKey == true && openQuoteFound == false) {
+								error = MISSING_OPEN_QUOTE_IN_STRING_MAP_KEY;
+								return(false);
+							}
+
+							if(stringMapKey == true && closeQuoteFound == false) {
+								error = MISSING_CLOSE_QUOTE_IN_STRING_MAP_KEY;
+								return(false);
+							}
+
+							if(stringMapKey == true && invalidStringCharacterFound == true) {
+								// This is a very rare error.
+								error = INVALID_CHAR_FOUND_IN_STRING_MAP_KEY;
+								return(false);
+							}
+
+							if(stringMapKey == true && stringCharacterFoundAfterCloseQuote == true) {
+								// This is a very rare error.
+								error = CHAR_FOUND_AFTER_CLOSE_QUOTE_IN_STRING_MAP_KEY;
+								return(false);
+							}
+
+							if(stringMapKey == true && closeSquareBracketFound == false) {
+								error = CLOSE_SQUARE_BRACKET_NOT_FOUND_IN_STRING_MAP_KEY;
+								return(false);
+							}
+
+							// If user gave an empty map key, that is invalid.
+							if(mapKeyValue == "") {
+								error = EMPTY_STRING_MAP_KEY_FOUND;
+								return(false);
+							}
+
+							// This map attribute is now fully validated.
+							// Move past the ] character.
+							idx++;
+							// We can insert the list index into our attribute name layout list.
+							Functions::Collections::appendM(attributeNameLayoutList,
+								mapKeyValue);
+							lhsSubscriptForListAndMapAdded = true;
+						} // End of if block checking map attribute's [key]
+
+						// We would not have added anything to the attribute name layout list after we added
+						// the attribute Name and attributeType if we encountered anything other than a
+						// list or map. In that case, we will add an empty string for
+						// all the data types other than list and map. Because, they don't use
+						// subscript to refer to an lhs value.
+						if(lhsSubscriptForListAndMapAdded == false) {
+							rstring str = "";
+							Functions::Collections::appendM(attributeNameLayoutList, str);
+						}
+
+						// Before we wrap this, we must check one more thing to
+						// ensure that there is no other non-space character
+						// present after the attribute name in the attribute name string.
+						while(idx < stringLength) {
+							// Skip any space characters which are allowed after a
+							// correct attribute name is found and validated.
+							if(myBlob[idx] != ' ') {
+								// A non-space character found after the fully
+								// validated attribute name which is not valid.
+								error = NON_SPACE_CHARACTER_FOUND_AFTER_A_VALID_ATTRIBUTE_NAME;
+								return(false);
+							}
+
+							idx++;
+						} // End of inner while loop.
+
+						// We completed the validation of the lhs.
+						lhsFound = true;
+						// We can break out of  the inner while loop.
+						break;
+					} // End of the if block that validated the matching tuple attribute.
+
+					// There was no attribute match starting at the current position.
+					// Continue to iterate the while loop.
+					it++;
+				} // End of the inner while loop iterating over the tuple attributes map.
+
+				if(lhsFound == false) {
+					error = LHS_NOT_MATCHING_WITH_ANY_TUPLE_ATTRIBUTE;
+					return(false);
+				}
+
+				if(trace == true) {
+					cout << "==== BEGIN eval_predicate trace 1c ====" << endl;
+					cout << "Attribute name=" << attributeName << endl;
+					cout << "Validation start index=" << validationStartIdx << endl;
+					cout <<  "Attribute name layout list after validating an attribute name." << endl;
+	    			ConstListIterator it = attributeNameLayoutList.getBeginIterator();
+
+	    			while (it != attributeNameLayoutList.getEndIterator()) {
+	    				ConstValueHandle myVal = *it;
+	    				rstring const & myString = myVal;
+	    				cout << myString << endl;
+	    				it++;
+	    			} // End of list iteration while loop.
+
+					cout << "==== END eval_predicate trace 1c ====" << endl;
+				} // End of if(trace == true)
+
+				break;
+    		} // End of if(lhsFound == false)
+    	} // End of the outer while loop
+
+    	if(lhsFound == true) {
+    		// We successfully validated the given tuple attribute name.
+    		//
+			// If we are on a recursive call to this method, it usually
+			// happens to validate only a tuple attribute that
+			// involves list<TUPLE>. In a recursive call,
+    		// validationStartIdx will have a non-zero value.
+    		// In that case, let us do this special thing.
+			if(validationStartIdx > 0) {
+				// It is necessary to set the validationStartIdx where
+				// we left off before returning from here. That will
+				// give the recursive caller a new position in the
+				// expression from where to continue if any further
+				// validation is needed.
+				validationStartIdx = idx;
+			}
+
+    		return(true);
+    	} else if(Functions::Collections::size(attributeNameLayoutList) == 0) {
+    		// This can happen when the entire attribute name string simply
+    		// contains space characters without any other characters.
+    		error = ATTRIBUTE_NAME_WITH_NO_VALID_CHARACTERS;
+    	} else {
+    		error = ATTRIBUTE_NAME_NOT_GOOD_FOR_VALIDATION;
+    	}
+
+    	return(false);
+    } // End of validateTupleAttributeName
+
+    // This method gets the value held in a given tuple by
+    // a given attribute name.
+    template<class T1, class T2>
+    void fetchTupleAttributeValue(rstring const & attributeName,
+    	SPL::map<rstring, rstring> const & tupleAttributesMap,
+		SPL::list<rstring> const & attributeNameLayoutList,
+		T1 const & myTuple, T2 & value, int32 & error, boolean trace) {
+    	// This method will get called recursively when a list<TUPLE> is
+    	// encountered in a given attribute name. It is important to note that
+    	// the recursive caller must always pass its own newly formed
+    	// local variables as method arguments here so as not to overwrite
+    	// the original reference pointers passed by the very first caller
+    	// who made the initial non-recursive call.
+    	error = ALL_CLEAR;
+
+    	// We can find everything we need to get the value of a given
+    	// attribute in the arguments passed to this method.
+		//
+        // Example tuple attribute names:
+        // "symbol"
+    	// "employee.skills"
+    	// "stats.numberOfSchools"
+    	// "details.location.geo.latitude"
+    	// "details.location.info.officials"
+        //
+		// The attribute name layout list describes the composition of a given attribute name.
+		// Structure of such a list will go something like this:
+		// This list will have a sequence of rstring items as shown below.
+		// LHSAttribName
+		// LHSAttribType
+		// ListIndexOrMapKeyValue  - When N/A, it will have an empty string.
+    	// Optional entry for list<TUPLE> attribute name start index - When N/A, this entry will not be there.
+    	// Optional entry for list<TUPLE> attribute name end index - When N/A, this entry will not be there.
+    	//
+		int32 attributeNameLayoutListCnt =
+			Functions::Collections::size(attributeNameLayoutList);
+
+		if(attributeNameLayoutListCnt == 0) {
+			// It is very rare for this to happen. But, we will check for it.
+			error = EMPTY_ATTRIBUTE_NAME_LAYOUT_LIST_DURING_VALUE_FETCH;
+			return;
+		}
+
+		// We have only one attribute name whose value needs to be obtained.
+		// We can read different aspects of a given attribute name from the
+		// attribute name layout list. That list was sent here as a method argument.
+		//
+		int32 idx = 0;
+		// Get the LHS attribute name.
+		rstring lhsAttributeName = attributeNameLayoutList[idx++];
+		// Get the LHS attribute type.
+		rstring lhsAttributeType = attributeNameLayoutList[idx++];
+		// Get the list index or the map key value.
+		rstring listIndexOrMapKeyValue = attributeNameLayoutList[idx++];
+
+		if(trace == true) {
+			cout << "==== BEGIN eval_predicate trace 2c ====" << endl;
+			cout << "Attribute name=" << lhsAttributeName << endl;
+			cout <<  "Attribute name layout list before fetching an attribute value." << endl;
+			ConstListIterator it = attributeNameLayoutList.getBeginIterator();
+
+			while (it != attributeNameLayoutList.getEndIterator()) {
+				ConstValueHandle myVal = *it;
+				rstring const & myString = myVal;
+				cout << myString << endl;
+				it++;
+			} // End of list iteration while loop.
+
+			cout << "==== END eval_predicate trace 2c ====" << endl;
+		}
+
+		ConstValueHandle cvh;
+		// Get the constant value handle for this attribute.
+		getConstValueHandleForTupleAttribute(myTuple, lhsAttributeName, cvh);
+
+		try {
+    		// Depending on the LHS attribute type, we will now
+        	// fetch the value of a given attribute in a given tuple.
+			// ****** rstring, indexed list and map based rstring value fetches ******
+			if(lhsAttributeType == "rstring") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<rstring>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::list<rstring> const & myList = cvh;
+				// Check if the user given list index is valid.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 ||
+					listIdx > (Functions::Collections::size(myList) - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				rstring const & myVal = myList[listIdx];
+				value = ConstValueHandle(myVal);
+			} else if(lhsAttributeType == "map<int32,rstring>" &&
+				listIndexOrMapKeyValue != "") {
+				SPL::map<int32,rstring> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int32 const & mapKey = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				// Using the [] map element access operator with a
+				// const SPL::map variable gives a compiler error
+				// saying that [] operation can't be performed using a const SPL::map.
+				// So, I'm using the at access method.
+				rstring const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+			} else if(lhsAttributeType == "map<int64,rstring>" &&
+        		listIndexOrMapKeyValue != "") {
+				SPL::map<int64,rstring> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int64 const & mapKey = atol(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				// Using the [] map element access operator with a
+				// const SPL::map variable gives a compiler error
+				// saying that [] operation can't be performed using a const SPL::map.
+				// So, I'm using the at access method.
+				rstring const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+			} else if(lhsAttributeType == "map<float32,rstring>" &&
+        		listIndexOrMapKeyValue != "") {
+				SPL::map<float32,rstring> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float32 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				// The C atof API used above actually returns double which is
+				// equivalent to the SPL float64. So, assigning the result from
+				// that API to an SPL float32 variable can't be made fully
+				// accurate without losing some precision for very large float32 numbers.
+				// It is a known limitation in C. So, for very large float32 based map keys,
+				// I had problems in the SPL 'has' method where it wrongly returned that
+				// the key doesn't exist when it actually is there.
+				// e-g: 5.28438e+08
+				// So, I stopped calling the SPL 'has' function from C++ code.
+				// The following manual procedure by converting the float based key into
+				// a string and then comparing it worked for me. I don't know how much
+				// overhead it will add compared to the SPL 'has' function if it indeed works.
+				ostringstream key;
+				key << mapKey;
+				boolean keyExists = false;
+
+				ConstMapIterator it = myMap.getBeginIterator();
+
+				while (it != myMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<float32,rstring> const & myFloat32RString = myVal;
+					ostringstream firstMember;
+					firstMember << myFloat32RString.first;
+
+					if(key.str() == firstMember.str()) {
+						keyExists = true;
+						rstring const & myVal = myFloat32RString.second;
+						value = ConstValueHandle(myVal);
+						break;
+					}
+
+					it++;
+				}
+
+				if(keyExists == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+			} else if(lhsAttributeType == "map<float64,rstring>" &&
+        		listIndexOrMapKeyValue != "") {
+				SPL::map<float64,rstring> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float64 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				// Using the [] map element access operator with a
+				// const SPL::map variable gives a compiler error
+				// saying that [] operation can't be performed using a const SPL::map.
+				// So, I'm using the at access method.
+				rstring const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+			} else if(lhsAttributeType == "map<rstring,rstring>" &&
+        		listIndexOrMapKeyValue != "") {
+				SPL::map<rstring,rstring> const & myMap = cvh;
+
+				if(Functions::Collections::has(myMap, listIndexOrMapKeyValue) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				// Using the [] map element access operator with a
+				// const SPL::map variable gives a compiler error
+				// saying that [] operation can't be performed using a const SPL::map.
+				// So, I'm using the at access method.
+				rstring const & myVal = myMap.at(listIndexOrMapKeyValue);
+				value = ConstValueHandle(myVal);
+    		// ****** Non-indexed full set, list and map value fetches ******
+			} else if(lhsAttributeType == "set<int32>") {
+				value = cvh;
+			} else if(lhsAttributeType == "set<int64>") {
+				value = cvh;
+			} else if(lhsAttributeType == "set<float32>") {
+				value = cvh;
+			} else if(lhsAttributeType == "set<float64>") {
+				value = cvh;
+			} else if(lhsAttributeType == "set<rstring>") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "list<float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<rstring,rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<rstring,int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<rstring,int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<rstring,float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<rstring,float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int32,rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int32,int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int32,int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int32,float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int32,float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int64,rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int64,int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int64,int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int64,float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<int64,float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float32,rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float32,int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float32,int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float32,float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float32,float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float64,rstring>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float64,int32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float64,int64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float64,float32>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+			} else if(lhsAttributeType == "map<float64,float64>" &&
+				listIndexOrMapKeyValue == "") {
+				value = cvh;
+        		// ****** Primitive types value fetches ******
+			} else if(lhsAttributeType == "int32") {
+				value = cvh;
+			} else if(lhsAttributeType == "uint32") {
+				value = cvh;
+			} else if(lhsAttributeType == "int64") {
+				value = cvh;
+			} else if(lhsAttributeType == "uint64") {
+				value = cvh;
+			} else if(lhsAttributeType == "float32") {
+				value = cvh;
+			} else if(lhsAttributeType == "float64") {
+				value = cvh;
+			} else if(lhsAttributeType == "boolean") {
+				value = cvh;
+				// ****** Indexed list and map based non-rstring value fetches ******
+    		} else if(lhsAttributeType == "list<int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::list<int32> const & myList = cvh;
+				// Check if the user given list index is valid.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 ||
+					listIdx > (Functions::Collections::size(myList) - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				int32 const & myVal = myList[listIdx];
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "list<int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::list<int64> const & myList = cvh;
+				// Check if the user given list index is valid.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 ||
+					listIdx > (Functions::Collections::size(myList) - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				int64 const & myVal = myList[listIdx];
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "list<float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::list<float32> const & myList = cvh;
+				// Check if the user given list index is valid.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 ||
+					listIdx > (Functions::Collections::size(myList) - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				float32 const & myVal = myList[listIdx];
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "list<float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::list<float64> const & myList = cvh;
+				// Check if the user given list index is valid.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 ||
+					listIdx > (Functions::Collections::size(myList) - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				float64 const & myVal = myList[listIdx];
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<rstring,int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<rstring,int32> const & myMap = cvh;
+
+				// Check if the user given map key is valid.
+				if(Functions::Collections::has(myMap, listIndexOrMapKeyValue) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int32 const & myVal = myMap.at(listIndexOrMapKeyValue);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<rstring,int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<rstring,int64> const & myMap = cvh;
+
+				// Check if the user given map key is valid.
+				if(Functions::Collections::has(myMap, listIndexOrMapKeyValue) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int64 const & myVal = myMap.at(listIndexOrMapKeyValue);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<rstring,float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<rstring,float32> const & myMap = cvh;
+
+				// Check if the user given map key is valid.
+				if(Functions::Collections::has(myMap, listIndexOrMapKeyValue) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float32 const & myVal = myMap.at(listIndexOrMapKeyValue);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<rstring,float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<rstring,float64> const & myMap = cvh;
+
+				// Check if the user given map key is valid.
+				if(Functions::Collections::has(myMap, listIndexOrMapKeyValue) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float64 const & myVal = myMap.at(listIndexOrMapKeyValue);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int32,int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int32,int32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int32 const & mapKey = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int32,int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int32,int64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int32 const & mapKey = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int64,int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int64,int32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int64 const & mapKey = atol(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int64,int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int64,int64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int64 const & mapKey = atol(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int32,float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int32,float32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int32 const & mapKey = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int32,float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int32,float64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int32 const & mapKey = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int64,float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int64,float32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int64 const & mapKey = atol(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<int64,float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<int64,float64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				int64 const & mapKey = atol(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<float32,int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float32,int32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float32 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				// The C atof API used above actually returns double which is
+				// equivalent to the SPL float64. So, assigning the result from
+				// that API to an SPL float32 variable can't be made fully
+				// accurate without losing some precision for very large float32 numbers.
+				// It is a known limitation in C. So, for very large float32 based map keys,
+				// I had problems in the SPL 'has' method where it wrongly returned that
+				// the key doesn't exist when it actually is there.
+				// e-g: 5.28438e+08
+				// So, I stopped calling the SPL 'has' function from C++ code.
+				// The following manual procedure by converting the float based key into
+				// a string and then comparing it worked for me. I don't know how much
+				// overhead it will add compared to the SPL 'has' function if it indeed works.
+		    	ostringstream key;
+		    	key << mapKey;
+		    	boolean keyExists = false;
+
+				ConstMapIterator it = myMap.getBeginIterator();
+
+				while (it != myMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<float32,int32> const & myFloat32Int32 = myVal;
+			    	ostringstream firstMember;
+			    	firstMember << myFloat32Int32.first;
+
+			    	if(key.str() == firstMember.str()) {
+			    		keyExists = true;
+			    		int32 const & myVal = myFloat32Int32.second;
+			    		value = ConstValueHandle(myVal);
+	    				break;
+			    	}
+
+					it++;
+				}
+
+				if(keyExists == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+    		} else if(lhsAttributeType == "map<float32,int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float32,int64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float32 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				// The C atof API used above actually returns double which is
+				// equivalent to the SPL float64. So, assigning the result from
+				// that API to an SPL float32 variable can't be made fully
+				// accurate without losing some precision for very large float32 numbers.
+				// It is a known limitation in C. So, for very large float32 based map keys,
+				// I had problems in the SPL 'has' method where it wrongly returned that
+				// the key doesn't exist when it actually is there.
+				// e-g: 5.28438e+08
+				// So, I stopped calling the SPL 'has' function from C++ code.
+				// The following manual procedure by converting the float based key into
+				// a string and then comparing it worked for me. I don't know how much
+				// overhead it will add compared to the SPL 'has' function if it indeed works.
+		    	ostringstream key;
+		    	key << mapKey;
+		    	boolean keyExists = false;
+
+				ConstMapIterator it = myMap.getBeginIterator();
+
+				while (it != myMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<float32,int64> const & myFloat32Int64 = myVal;
+			    	ostringstream firstMember;
+			    	firstMember << myFloat32Int64.first;
+
+			    	if(key.str() == firstMember.str()) {
+			    		keyExists = true;
+			    		int64 const & myVal = myFloat32Int64.second;
+			    		value = ConstValueHandle(myVal);
+			    		break;
+			    	}
+
+					it++;
+				}
+
+				if(keyExists == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+    		} else if(lhsAttributeType == "map<float64,int32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float64,int32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float64 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<float64,int64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float64,int64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float64 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				int64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<float32,float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float32,float32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float32 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				// The C atof API used above actually returns double which is
+				// equivalent to the SPL float64. So, assigning the result from
+				// that API to an SPL float32 variable can't be made fully
+				// accurate without losing some precision for very large float32 numbers.
+				// It is a known limitation in C. So, for very large float32 based map keys,
+				// I had problems in the SPL 'has' method where it wrongly returned that
+				// the key doesn't exist when it actually is there.
+				// e-g: 5.28438e+08
+				// So, I stopped calling the SPL 'has' function from C++ code.
+				// The following manual procedure by converting the float based key into
+				// a string and then comparing it worked for me. I don't know how much
+				// overhead it will add compared to the SPL 'has' function if it indeed works.
+		    	ostringstream key;
+		    	key << mapKey;
+		    	boolean keyExists = false;
+
+				ConstMapIterator it = myMap.getBeginIterator();
+
+				while (it != myMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<float32,float32> const & myFloat32Float32 = myVal;
+			    	ostringstream firstMember;
+			    	firstMember << myFloat32Float32.first;
+
+			    	if(key.str() == firstMember.str()) {
+			    		keyExists = true;
+			    		float32 const & myVal = myFloat32Float32.second;
+			    		value = ConstValueHandle(myVal);
+			    		break;
+			    	}
+
+					it++;
+				}
+
+				if(keyExists == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+    		} else if(lhsAttributeType == "map<float32,float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float32,float64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float32 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				// The C atof API used above actually returns double which is
+				// equivalent to the SPL float64. So, assigning the result from
+				// that API to an SPL float32 variable can't be made fully
+				// accurate without losing some precision for very large float32 numbers.
+				// It is a known limitation in C. So, for very large float32 based map keys,
+				// I had problems in the SPL 'has' method where it wrongly returned that
+				// the key doesn't exist when it actually is there.
+				// e-g: 5.28438e+08
+				// So, I stopped calling the SPL 'has' function from C++ code.
+				// The following manual procedure by converting the float based key into
+				// a string and then comparing it worked for me. I don't know how much
+				// overhead it will add compared to the SPL 'has' function if it indeed works.
+		    	ostringstream key;
+		    	key << mapKey;
+		    	boolean keyExists = false;
+
+				ConstMapIterator it = myMap.getBeginIterator();
+
+				while (it != myMap.getEndIterator()) {
+					std::pair<ConstValueHandle, ConstValueHandle> myVal = *it;
+					std::pair<float32,float64> const & myFloat32Float64 = myVal;
+			    	ostringstream firstMember;
+			    	firstMember << myFloat32Float64.first;
+
+			    	if(key.str() == firstMember.str()) {
+			    		keyExists = true;
+			    		float64 const & myVal = myFloat32Float64.second;
+			    		value = ConstValueHandle(myVal);
+			    		break;
+			    	}
+
+					it++;
+				}
+
+				if(keyExists == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+    		} else if(lhsAttributeType == "map<float64,float32>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float64,float32> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float64 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float32 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+    		} else if(lhsAttributeType == "map<float64,float64>" &&
+    			listIndexOrMapKeyValue != "") {
+				SPL::map<float64,float64> const & myMap = cvh;
+				// Check if the user given map key is valid.
+				float64 const & mapKey = atof(listIndexOrMapKeyValue.c_str());
+
+				if(Functions::Collections::has(myMap, mapKey) == false) {
+					error = INVALID_KEY_FOR_LHS_MAP_ATTRIBUTE;
+					return;
+				}
+
+				float64 const & myVal = myMap.at(mapKey);
+				value = ConstValueHandle(myVal);
+				// ****** list<TUPLE> value fetches ******
+    		} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0  &&
+				listIndexOrMapKeyValue == "") {
+				// This is a list<TUPLE> with no index value.
+				// Caller wants to get the entire list holding all the tuples.
+				// The line below shows an example of an attribute type (schema)
+				// followed by an attribute name.
+				// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList
+				value = cvh;
+			} else if(Functions::String::findFirst(lhsAttributeType, "list<tuple<") == 0  &&
+				listIndexOrMapKeyValue != "") {
+				// If it is a list<TUPLE> with an index value, this needs a special value fetch.
+				// e-g: Body.MachineStatus.ComponentList[0].Component["MapKey"] == "MapValue"
+				// This list doesn't hold items that are made of
+				// well defined SPL built-in data types.
+				// Instead, it holds a user defined Tuple type. So, we can't
+				// adopt the technique we used in the other else blocks above
+				// to assign cvh to a variable such as SPL::list<rstring>.
+				// We must use the C++ interface type SPL::List that the
+				// SPL::list is based on.
+				// The line below shows an example of an attribute type (schema)
+				// followed by an attribute name.
+				// e-g: list<tuple<map<rstring,rstring> Component>> ComponentList
+				SPL::List const & myListTuple = cvh;
+				ConstListIterator it = myListTuple.getBeginIterator();
+
+				// We have to look only for a tuple that is present in the
+				// user specified list index. Let us first check if that
+				// index is valid in a given list.
+				int32 listIdx = atoi(listIndexOrMapKeyValue.c_str());
+
+				if(listIdx < 0 || listIdx > (myListTuple.getSize() - 1)) {
+					error = INVALID_INDEX_FOR_LHS_LIST_ATTRIBUTE;
+					return;
+				}
+
+				// Use of "lot" in the local variable names below means List Of Tuple.
+				int32 lotIdx = -1;
+				boolean lotResult = false;
+				SPL::map<rstring, rstring> lotTupleAttributesMap;
+				int32 lotError = 0;
+				rstring lotTupleSchema = "";
+
+				while (it != myListTuple.getEndIterator()) {
+					// We have to process only the tuple held in a
+					// user given list index value in the attribute name.
+					// Remaining list items can be skipped.
+					lotIdx++;
+
+					if(lotIdx != listIdx) {
+						// Continue the while loop.
+						it++;
+						continue;
+					}
+
+					ConstValueHandle myVal = *it;
+					Tuple const & lotTuple = myVal;
+
+					// We can now get the attributes present inside this tuple.
+					//
+					int32 lotSchemaLength =
+						Functions::String::length(lhsAttributeType);
+
+					// Get just the tuple<...> part from this attribute's type.
+					// We have to skip the initial "list<" portion in the type string.
+					// We also have to skip the final > in the type string that
+					// is a closure for "list<" i.e. we start from the
+					// zero based index 5 and take the substring until the
+					// end except for the final > which in total is 6 characters
+					// less than the length of the entire type string.
+					lotTupleSchema = Functions::String::substring(lhsAttributeType,
+						5, lotSchemaLength-6);
+					lotResult = parseTupleAttributes(lotTupleSchema,
+						lotTupleAttributesMap, lotError, trace);
+
+					if(lotResult == false) {
+						// This error should never happen since we
+						// already passed this check twice even before
+						// coming into this value fetch method.
+						// We are simply doing it here as a safety measure.
+						error = ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALUE_FETCH;
+
+						if(trace == true) {
+							cout << "It failed to get the list<TUPLE> attributes for " <<
+								lhsAttributeName <<
+								" during the tuple attribute value fetch. Error=" << lotError <<
+								". Tuple schema=" << lotTupleSchema << endl;
+						}
+
+						// Stop fetching value of list<TUPLE> due to this rare error.
+						break;
+					}
+
+					// We got the LOT tuple attributes.
+					// At this time, we have to get the attribute name layout list for
+					// the attribute name involving a list<TUPLE>. Unlike we
+					// normally do it in the validation method for the
+					// SPL built-in data types based attribute names,
+					// we don't prepare it for a list<TUPLE> based
+					// attribute name and save it ahead of time in the
+					// attribute name layout list. So, we now have to make a straight
+					// non-recursive call to the the validation method which
+					// will get us an attribute name layout list that we can use
+					// here only once for fetching the value of a list<TUPLE> based
+					// attribute name.
+					//
+					// We have to parse just a partial portion of the full
+					// attribute name string that is passed to this method.
+					// In the normal attribute name validation step earlier,
+					// we have stored the start index and end index for
+					// that partial string portion we need below.
+					// You can refer back to the attribute name validation method to see
+					// how we store these two indices. In essence,
+					// the final two entries of the attribute name layout list
+					// already contain these two numbers in the case of a list<TUPLE>.
+					// They are in zero based list index 3 and 4.
+					int32 startIdx = atoi(attributeNameLayoutList[3].c_str());
+					int32 endIdx = atoi(attributeNameLayoutList[4].c_str());
+					// We can take a substring to get the
+					// attribute portion that we are interested in.
+					rstring lotAttributeName = Functions::String::substring(
+						attributeName, startIdx, (endIdx-startIdx+1));
+
+					if(trace == true) {
+						cout << "LOT attribute name in value fetch=" << lotAttributeName << endl;
+					}
+
+					SPL::list<rstring> lotAttributeNameLayoutList;
+					// We are making a non-recursive call. So, set it to 0.
+					// i.e. start validating from index 0 of the
+					// lot attribute name string we created above using substring.
+					int32 validationStartIdx = 0;
+					lotResult = validateTupleAttributeName(lotAttributeName,
+						lotTupleAttributesMap, lotAttributeNameLayoutList,
+						error, validationStartIdx, trace);
+
+					if(lotResult == false) {
+						// There was a validation error.
+						// This should be rare as we have done this successfully
+						// once already in the normal validation step earlier.
+						if(trace == true) {
+							cout << "LOT validation error during tuple attribute value fetch. Error=" << error << endl;
+						}
+
+						break;
+					}
+
+					// We can recursively call the current
+					// method that we are in now to fetch the
+					// tuple attribute value involving a list<TUPLE>.
+					if(trace == true) {
+						cout << "BEGIN Recursive fetch tuple attribute value call for list<TUPLE> " <<
+							attributeName << "." << endl;
+					}
+
+					// Call the same method we are in now.
+				    fetchTupleAttributeValue(lotAttributeName, lotTupleAttributesMap,
+				    	lotAttributeNameLayoutList, lotTuple, value, error, trace);
+
+					if(trace == true) {
+						cout << "END Recursive fetch tuple attribute value call for list<TUPLE> " <<
+							lhsAttributeName << "." << endl;
+					}
+
+					// We are done fetching the attribute value of the single tuple from this
+					// list<TUPLE> that the user specified in the attribute name.
+					break;
+				} // End of while loop
+			} else {
+				// Unsupported fetch attribute value condition.
+				error = UNSUPPORTED_FETCH_ATTRIBUTE_VALUE_CONDITION_DETECTED;
+			} // End of the many if conditional blocks for different value fetches.
+        } catch(...) {
+        	// This exception is most likely related to the
+        	// tuple attribute value assignment being done to a
+        	// method argument passed by the caller that has a
+        	// wrong data type.
+        	error = WRONG_TYPE_OF_ATTRIBUTE_PASSED_AS_FUNCTION_ARGUMENT_BY_CALLER;
+        }
+
+        if(error != ALL_CLEAR) {
+        	return;
+        }
+
+		if(trace == true) {
+			cout << "==== BEGIN eval_predicate trace 3c ====" << endl;
+			cout << "Attribute name=" << attributeName <<
+				" with a type of " << lhsAttributeType <<
+				" was fetched successfully and being returned to the caller." << endl;
+
+			cout << "==== END eval_predicate trace 3c ====" << endl;
+		}
+    } // End of fetchTupleAttributeValue
     // ====================================================================
 } // End of namespace eval_predicate_functions
 // ====================================================================

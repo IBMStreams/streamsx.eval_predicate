@@ -1,5 +1,9 @@
 # Changes
 
+## v1.0.4
+* Apr/23/2021
+* Added a new function get_tuple_attribute_value to fetch the value of a user given attribute name if present in a user given tuple.
+
 ## v1.0.3
 * Apr/20/2021
 * Added more special operations for rstring, set, list and map. They are sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT and sizeGE.

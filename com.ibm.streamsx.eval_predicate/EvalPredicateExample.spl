@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Apr/18/2021
+Last modified on: Apr/23/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -86,6 +86,13 @@ Following expressions use nested parenthesis.
 ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
 (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 
+In addition to showing how to do rule expression processing,
+this example also shows another feature of the eval_predicate
+toolkit i.e. how to get a value of a specific tuple attribute as
+that is expressed via a user provided string input.
+In this example, you can search for get_tuple_attribute_value to
+see 10 different test cases on that topic.
+
 How can you use this new eval_predicate function?
 -------------------------------------------------
 Any other application that wants to use this function must
@@ -123,6 +130,13 @@ composite EvalPredicateExample {
 		// eval_predicate function or not. [Useful for debugging.]
 		expression<boolean> $EVAL_PREDICATE_TRACING : 
 			(boolean)getSubmissionTimeValue("EvalPredicateTracing", "false");
+			
+		// This constant can be used to specify whether the
+		// value of the tuple attribute fetched via the
+		// get_tuple_attribute_value should be displayed on 
+		// the console or not.
+		expression<boolean> $DISPLAY_FETCHED_ATTRIBUTE_VALUE : 
+			(boolean)getSubmissionTimeValue("DisplayFetchedAttributeValue", "true");
 			
 	type
 		// These are types or schema of the tuples that we will use to 
@@ -165,6 +179,7 @@ composite EvalPredicateExample {
 			logic
 				onTuple S: {
 					mutable rstring rule = "";
+					mutable rstring attributeName = "";
 					mutable int32 error = 0;
 					mutable boolean result = false;
 
@@ -321,6 +336,49 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 2.4: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase 2.4: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// Get the value of a given tuple attribute name.
+					// Arg1: Fully qualified attribute name
+					// Arg2: Your tuple
+					// Arg3: A mutable variable of an appropriate type in which the
+					//       value of a given attribute will be returned.
+					// Arg4: A mutable int32 variable to receive non-zero error code if any.
+					// Arg5: A boolean value to enable debug tracing inside this function.
+					// It is a void method that returns nothing.
+					//
+					// 2.5
+					// Get an int32 value of a given tuple attribute name.
+					attributeName = "employee.id";
+					mutable int32 employeeId = 0;
+					get_tuple_attribute_value(attributeName, myEmployee,
+						employeeId, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 2.5: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)employeeId);
+						}
+					} else {
+						printStringLn("Testcase 2.5: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 2.6
+					// Get the full set<rstring> value of a given tuple attribute name.
+					attributeName = "employee.skills";
+					mutable set<rstring> employeeSkills = {};
+					get_tuple_attribute_value(attributeName, myEmployee,
+						employeeSkills, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 2.6: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)employeeSkills);
+						}
+					} else {
+						printStringLn("Testcase 2.6: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
 					// ============== TESTCASE GROUP 3 ============== 
@@ -524,7 +582,118 @@ composite EvalPredicateExample {
 					} else {
 						printStringLn("Testcase 3.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
+
+					// Get the value of a given tuple attribute name.
+					// Arg1: Fully qualified attribute name
+					// Arg2: Your tuple
+					// Arg3: A mutable variable of an appropriate type in which the
+					//       value of a given attribute will be returned.
+					// Arg4: A mutable int32 variable to receive non-zero error code if any.
+					// Arg5: A boolean value to enable debug tracing inside this function.
+					// It is a void method that returns nothing.
+					//
+					// 3.14
+					// Get an rstring value of a given tuple attribute name.
+					attributeName = "name";
+					mutable rstring cityName = "";
+					get_tuple_attribute_value(attributeName, myCity,
+						cityName, error, $EVAL_PREDICATE_TRACING);
 					
+					if(error == 0) {
+						printStringLn("Testcase 3.14: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)cityName);
+						}
+					} else {
+						printStringLn("Testcase 3.14: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.15
+					// Get a float32 value of a given tuple attribute name.
+					attributeName = "details.location.geo.latitude";
+					mutable float32 latitude = (float32)0.0;
+					get_tuple_attribute_value(attributeName, myCity,
+						latitude, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.15: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)latitude);
+						}
+					} else {
+						printStringLn("Testcase 3.15: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.16
+					// Get a list<rstring>[idx] value of a given tuple attribute name.
+					attributeName = "details.location.info.businesses[2]";
+					mutable rstring businessName = "";
+					get_tuple_attribute_value(attributeName, myCity,
+						businessName, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.16: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)businessName);
+						}
+					} else {
+						printStringLn("Testcase 3.16: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.17
+					// Get a map<rstring,rstring>[key] value of a given tuple attribute name.
+					attributeName = "details.location.info.officials['Mayor']";
+					mutable rstring mayor = "";
+					get_tuple_attribute_value(attributeName, myCity,
+						mayor, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.17: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)mayor);
+						}
+					} else {
+						printStringLn("Testcase 3.17: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.18
+					// Get the entire list<rstring> value of a given tuple attribute name.
+					attributeName = "roadwayNumbers";
+					mutable list<int32> routeNumbers = [];
+					get_tuple_attribute_value(attributeName, myCity,
+						routeNumbers, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.18: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)routeNumbers);
+						}
+					} else {
+						printStringLn("Testcase 3.18: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.19
+					// Get the entire map<rstring,rstring> value of a given tuple attribute name.
+					attributeName = "housingNumbers";
+					mutable map<rstring,int32> housingReport = {};
+					get_tuple_attribute_value(attributeName, myCity,
+						housingReport, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.19: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)housingReport);
+						}
+					} else {
+						printStringLn("Testcase 3.19: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
 					// ============== TESTCASE GROUP 4 ============== 					
 					mutable AccuWeather_t myWeather = {};
 					myWeather.city = "New York";
@@ -583,6 +752,48 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 4.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
+					// Get the value of a given tuple attribute name.
+					// Arg1: Fully qualified attribute name
+					// Arg2: Your tuple
+					// Arg3: A mutable variable of an appropriate type in which the
+					//       value of a given attribute will be returned.
+					// Arg4: A mutable int32 variable to receive non-zero error code if any.
+					// Arg5: A boolean value to enable debug tracing inside this function.
+					// It is a void method that returns nothing.
+					//
+					// 4.3
+					// Get a list<TUPLE>[idx] value of a given tuple attribute name.
+					attributeName = "weatherList[0].hourlyTemperatureMap";
+					mutable map<int64, float64> myTemperatureMap = {};
+					get_tuple_attribute_value(attributeName, accuWeatherTestData,
+						myTemperatureMap, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 4.3: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)myTemperatureMap);
+						}
+					} else {
+						printStringLn("Testcase 4.3: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 4.4
+					// Get the entire list<TUPLE> value of a given tuple attribute name.
+					attributeName = "weatherList";
+					mutable list<AccuWeather_t> myWeatherList = [];
+					get_tuple_attribute_value(attributeName, accuWeatherTestData,
+						myWeatherList, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 4.4: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)myWeatherList);
+						}
+					} else {
+						printStringLn("Testcase 4.4: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
 				} // End of onTuple S
 		} // End of the Custom operator.
 } // End of the main composite.
