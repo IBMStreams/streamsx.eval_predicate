@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/23/2021
+Last modified on: Apr/25/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -79,11 +79,13 @@ composite FunctionalTests {
 		//
 		// 1) A simple flat schema with no nesting.
 		Ticker_t = rstring symbol, float32 price, uint32 quantity, 
+			rstring priceInString, rstring quantityInString, 
 			boolean buyOrSell, map<boolean, int32> myMap1;		
 
 		// 2) Another simple flat schema with no nesting.
 		Weather_t = rstring city, float64 humidity,
-			map<int64, float64> hourlyTemperatureMap, boolean sunnyDay;
+			map<int64, float64> hourlyTemperatureMap, 
+			boolean sunnyDay, map<rstring, rstring> reporters;
 
 		// 3) A made up arbitrary schema with multilevel types and  
 		// nesting that includes primitive and collection data types such as 
@@ -156,6 +158,8 @@ composite FunctionalTests {
 					myTicker.symbol = "INTC";
 					myTicker.price = (float32)79.25;
 					myTicker.quantity = 1287u;
+					myTicker.priceInString = "79.25";
+					myTicker.quantityInString = "1287";					
 					myTicker.buyOrSell = true;
 					myTicker.myMap1 = {true:1, false:0};
 					// Send this tuple out.
@@ -175,6 +179,9 @@ composite FunctionalTests {
 					insertM(myWeather.hourlyTemperatureMap,
 						729841l, 85.853);
 					myWeather.sunnyDay = true;
+					myWeather.reporters = {"WKLX's weatherwoman":"Martha O\'Leary",
+						"WMRX's weatherman":"Bob O\'Donnel"};		
+					
 					// -------------------------
 					// Create the comprehensive test data tuple now.
 					mutable TestData_t myTestData = {};
@@ -1244,6 +1251,126 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A8.8: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					
+					// A8.9 (rstring < operation verb)
+					_rule = "(quantityInString < '1300')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.9: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.9: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.9: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.10 (rstring <= operation verb)
+					_rule = "(priceInString <= '106.29')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.10: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.10: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.11 (rstring > operation verb)
+					_rule = "(quantityInString > '5000')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.11: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.12 (rstring >= operation verb)
+					_rule = "(priceInString >= '786.43')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.12: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.12: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.12: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.13 (rstring containsCI operation verb)
+					_rule = "(symbol containsCI 'intc')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.13: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.13: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.14 (rstring startsWithCI operation verb)
+					_rule = "(symbol startsWithCI 'In')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.15 (rstring endsWithCI operation verb)
+					_rule = "(symbol endsWithCI 'tC')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.15: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.15: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.15: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.16 (rstring notContainsCI operation verb)
+					_rule = "(symbol notContainsCI 'intc')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.16: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.16: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.16: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.17 (rstring notStartsWithCI operation verb)
+					_rule = "(symbol notStartsWithCI 'iB')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.17: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.17: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.17: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.18 (rstring notEndsWithCI operation verb)
+					_rule = "(symbol notEndsWithCI 'Bm')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.18: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.18: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.18: Evaluation execution failed. Error=" + (rstring)error);
+					}					
 					// -------------------------
 
 					// A9.1 (rstring contains operation verb)
@@ -6610,6 +6737,36 @@ composite FunctionalTests {
 						printStringLn("Testcase A52.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
+					
+					// A53.1 (Use of quote characters in map key string and in RHS string value.)
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					_rule = "(weatherList[0].reporters['WKLX\'s weatherwoman'] contains 'Martha O\'Leary')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A53.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A53.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A53.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A53.2 (Another example for using quote characters in map key string and in RHS string value.)
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					_rule = "(    weatherList[0].reporters['WMRX\'s weatherman']    endsWith ' O\'Donnel'   " +
+						" &&   weatherList[0].reporters['WKLX\'s weatherwoman'] contains 'Martha O\'Leary'     )";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A53.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A53.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A53.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the HappyPathSink operator.
 		
@@ -7072,7 +7229,7 @@ composite FunctionalTests {
 					// -------------------------
 
 					// B26.1 (INCOMPATIBLE_LESS_THAN_OPERATION_FOR_LHS_ATTRIB_TYPE 40)
-					_rule = "(testId < 'Happy Path')";
+					_rule = "(a.transport.cars.numberOfEnginesMade < 343252)";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -7085,7 +7242,7 @@ composite FunctionalTests {
 					// -------------------------
 
 					// B27.1 (INCOMPATIBLE_LESS_THAN_OR_EQUALS_OPERATION_FOR_LHS_ATTRIB_TYPE 41)
-					_rule = "(testId <= 'Happy Path')";
+					_rule = "(a.transport.cars.numberOfEnginesMade <= 343254)";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -7098,7 +7255,7 @@ composite FunctionalTests {
 					// -------------------------
 
 					// B28.1 (INCOMPATIBLE_GREATER_THAN_OPERATION_FOR_LHS_ATTRIB_TYPE 42)
-					_rule = "(a.transport.cars.numberOfEnginesMade > 343252)";
+					_rule = "(a.transport.cars.numberOfEnginesMade > 343256)";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -7111,7 +7268,7 @@ composite FunctionalTests {
 					// -------------------------
 
 					// B29.1 (INCOMPATIBLE_GREATER_THAN_OR_EQUALS_OPERATION_FOR_LHS_ATTRIB_TYPE 43)
-					_rule = "(a.rack.hw.processorFamily[3] >= 'Denlow')";
+					_rule = "(a.transport.cars.numberOfEnginesMade >= 343258)";
 					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -7902,6 +8059,18 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase B81.8: Evaluation execution failed. Error=" + (rstring)error);
 					}
+										
+					// B81.9 (COLLECTION_ITEM_EXISTENCE_INVALID_OPERATION_VERB_FOUND_DURING_EXP_EVAL 108)
+					_rule = "(a.transport.cars.models containsCI 'Prius')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B81.9: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B81.9: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B81.9: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the UnhappyPathSink operator.
@@ -8688,10 +8857,31 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase C1.47: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
+					
+					// C1.48
+					// Get a map<rstring,rstring>[key] value of a given tuple attribute name.
+					// In this case, the map key string has a quote character in it.
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					_attributeName = 'weatherList[0].reporters["WKLX\'s weatherwoman"]';
+					mutable rstring weatherwoman = "";
+					get_tuple_attribute_value(_attributeName, _myTestData,
+						weatherwoman, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase C1.48: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(_attributeName + "=" + (rstring)weatherwoman);
+						}
+					} else {
+						printStringLn("Testcase C1.48: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
 					// -------------------------
+					
 					// Let us add below a few test cases for the
 					// get_tuple_attribute_value function where
-					// it will return an error.
+					// it will fail and return an error.
 					//
 					// D1.1 (LHS_NOT_MATCHING_WITH_ANY_TUPLE_ATTRIBUTE 16)
 					_attributeName = "xyz";

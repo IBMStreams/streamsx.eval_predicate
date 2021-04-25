@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Apr/23/2021
+Last modified on: Apr/25/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -26,7 +26,13 @@ given expression (rule) to access nested tuple attributes.
 
 3) This new eval_predicate function allows the user
 given expression (rule) to have operational verbs such as
-contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
+contains, startsWith, endsWith, notContains, notStartsWith,
+notEndsWith. For case insensitive (CI) string operations, these
+operational verbs can be used: containsCI, startsWithCI,
+endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI
+For checking the size of the set, list and map, these
+operational verbs can be used: sizeEQ, sizeNE, sizeLT,
+sizeLE, sizeGT, sizeGE
 
 4) This new eval_predicate function supports the following operations.
 --> It supports these relational operations: ==, !=, <, <=, >, >=
@@ -34,7 +40,9 @@ contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith.
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations for rstring, set, list and map:
     contains, startsWith, endsWith, notContains, notStartsWith,
-    notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+    notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI,
+    notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE,
+    sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -253,6 +261,12 @@ the built-in evalPredicate and my new eval_predicate in this file.
 #define ATTRIBUTE_PARSING_ERROR_IN_LIST_OF_TUPLE_VALUE_FETCH 137
 #define UNSUPPORTED_EVAL_CONDITION_DETECTED 138
 #define UNSUPPORTED_FETCH_ATTRIBUTE_VALUE_CONDITION_DETECTED 139
+#define INCOMPATIBLE_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 140
+#define INCOMPATIBLE_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 141
+#define INCOMPATIBLE_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 142
+#define INCOMPATIBLE_NOT_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 143
+#define INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 144
+#define INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 145
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -380,6 +394,10 @@ namespace eval_predicate_functions {
     // Evaluate the expression according to the predefined plan.
     boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
     	Tuple const & myTuple, int32 & error, boolean trace);
+    // Check if a given quote character marks the end of a map key string.
+    boolean isQuoteCharacterAtEndOfMapKeyString(blob const & myBlob, int32 const & idx);
+    // Check if a given quote character marks the end of an RHS string.
+    boolean isQuoteCharacterAtEndOfRhsString(blob const & myBlob, int32 const & idx);
     // Get the constant value handle for a given attribute name in a given tuple.
     void getConstValueHandleForTupleAttribute(Tuple const & myTuple,
         rstring attributeName, ConstValueHandle & cvh);
@@ -1914,10 +1932,14 @@ namespace eval_predicate_functions {
     	// We support these arithmetic operations: +, -, *, /, %
     	// Special operations:
     	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith,
-    	// sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+        // containsCI, startsWithCI, endsWithCI, notContainsCI,
+        // notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT,
+    	// sizeLE, sizeGT, sizeGE
     	// No bitwise operations are supported at this time.
 		rstring relationalAndArithmeticOperations =
 			rstring("==,!=,<=,<,>=,>,+,-,*,/,%,") +
+			rstring("containsCI,startsWithCI,endsWithCI,") +
+			rstring("notContainsCI,notStartsWithCI,notEndsWithCI,") +
 			rstring("contains,startsWith,endsWith,") +
 			rstring("notContains,notStartsWith,notEndsWith,") +
 			rstring("sizeEQ,sizeNE,sizeLT,sizeLE,sizeGT,sizeGE");
@@ -2531,7 +2553,7 @@ namespace eval_predicate_functions {
 								} else {
 									// A non-space or non-[ character found which is
 									// valid when the operation verb following this LHS is
-									// either contains or notContains or sizeXX.
+									// either contains or notContains or containsCI or notContainsCI or sizeXX.
 									// If not, it is not valid. We will do this check
 									// right after this while loop.
 									break;
@@ -2569,6 +2591,8 @@ namespace eval_predicate_functions {
 								if((Functions::String::findFirst(lhsAttribType, "list<tuple<") == -1) &&
 									(Functions::String::findFirst(expr, "contains", idx) == idx ||
 									Functions::String::findFirst(expr, "notContains", idx) == idx ||
+									Functions::String::findFirst(expr, "containsCI", idx) == idx ||
+									Functions::String::findFirst(expr, "notContainsCI", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeEQ", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeNE", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeLT", idx) == idx ||
@@ -2825,7 +2849,7 @@ namespace eval_predicate_functions {
 								} else {
 									// A non-space or non-[ character found which is
 									// valid when the following operation verb is
-									// either contains or notContains or sizeXX.
+									// either contains or notContains or containsCI or notContainsCI or sizeXX.
 									// If not, it is not valid. We will do this check
 									// right after this while loop.
 									break;
@@ -2837,9 +2861,11 @@ namespace eval_predicate_functions {
 							if(openSquareBracketFound == false) {
 								// A map attribute with no [ is valid only if the
 								// following operation verb is either contains or
-								// notContains or sizeXX.
+								// notContains or containsCI or notContainsCI or sizeXX.
 								if(Functions::String::findFirst(expr, "contains", idx) == idx ||
 									Functions::String::findFirst(expr, "notContains", idx) == idx ||
+									Functions::String::findFirst(expr, "containsCI", idx) == idx ||
+									Functions::String::findFirst(expr, "notContainsCI", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeEQ", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeNE", idx) == idx ||
 									Functions::String::findFirst(expr, "sizeLT", idx) == idx ||
@@ -3059,7 +3085,19 @@ namespace eval_predicate_functions {
 									if(openQuoteFound == false) {
 										openQuoteFound = true;
 									} else if(closeQuoteFound == false) {
-										closeQuoteFound = true;
+										// We can have single or double quote characters as
+										// part of the map key. So, we can consider this as
+										// an end of map key string's close quote only if it
+										// appears at the very end of the map key string.
+										if(isQuoteCharacterAtEndOfMapKeyString(myBlob, idx) == true) {
+											closeQuoteFound = true;
+										} else {
+											// It is an embedded quote character.
+											// We will add it to our map key value.
+											mapKeyValue += myBlob[idx];
+										}
+										// It will continue the while loop after the
+										// end of this if conditional code block.
 									} else {
 										stringCharacterFoundAfterCloseQuote = true;
 										break;
@@ -3204,7 +3242,10 @@ namespace eval_predicate_functions {
     		// i.e. relational or arithmetic or special ones.
     		// ==, !=, <, <=, >, >=
         	// +, -, *, /, %
-    		// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith
+    		// contains, startsWith, endsWith, notContains, notStartsWith,
+    		// notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI,
+    	    // notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT,
+    		// sizeLE, sizeGT, sizeGE
     		// e-g:
     		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
     		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
@@ -3291,27 +3332,30 @@ namespace eval_predicate_functions {
     			} // End of validating the equivalence operator verbs.
 
     			// We will allow relational operation verbs only for
-    			// int and float based attributes in a non-set data type.
+    			// int, float and string based attributes in a non-set data type.
+    			// For a string, we will convert it to an integer and then
+    			// perform the given relational operation.
     			if(currentOperationVerb == "<" || currentOperationVerb == "<=" ||
     				currentOperationVerb == ">" || currentOperationVerb == ">=") {
-    				if(lhsAttribType != "int32" &&
-    					lhsAttribType != "uint32" && lhsAttribType != "int64" &&
-						lhsAttribType != "uint64" && lhsAttribType != "float32" &&
-						lhsAttribType != "float64" &&
-						lhsAttribType != "list<int32>" && lhsAttribType != "list<int64>" &&
-						lhsAttribType != "list<float32>" && lhsAttribType != "list<float64>" &&
-						lhsAttribType != "map<rstring,int32>" &&
-						lhsAttribType != "map<rstring,int64>" &&
-						lhsAttribType != "map<rstring,float32>" &&
-						lhsAttribType != "map<rstring,float64>" &&
-						lhsAttribType != "map<int32,int32>" && lhsAttribType != "map<int32,int64>" &&
-						lhsAttribType != "map<int64,int32>" && lhsAttribType != "map<int64,int64>" &&
-						lhsAttribType != "map<int32,float32>" && lhsAttribType != "map<int32,float64>" &&
-						lhsAttribType != "map<int64,float32>" && lhsAttribType != "map<int64,float64>" &&
-						lhsAttribType != "map<float32,int32>" && lhsAttribType != "map<float32,int64>" &&
-						lhsAttribType != "map<float64,int32>" && lhsAttribType != "map<float64,int64>" &&
-						lhsAttribType != "map<float32,float32>" && lhsAttribType != "map<float32,float64>" &&
-						lhsAttribType != "map<float64,float32>" && lhsAttribType != "map<float64,float64>") {
+    				if(lhsAttribType != "rstring" && lhsAttribType != "int32" &&
+    				lhsAttribType != "uint32" && lhsAttribType != "int64" &&
+					lhsAttribType != "uint64" && lhsAttribType != "float32" &&
+					lhsAttribType != "float64" &&
+					lhsAttribType != "list<int32>" && lhsAttribType != "list<int64>" &&
+					lhsAttribType != "list<float32>" && lhsAttribType != "list<float64>" &&
+					lhsAttribType != "list<rstring>" && lhsAttribType != "map<rstring,rstring>" &&
+					lhsAttribType != "map<rstring,int32>" && lhsAttribType != "map<int32,rstring>" &&
+					lhsAttribType != "map<rstring,int64>" && lhsAttribType != "map<int64,rstring>" &&
+					lhsAttribType != "map<rstring,float32>" && lhsAttribType != "map<float32,rstring>" &&
+					lhsAttribType != "map<rstring,float64>" && lhsAttribType != "map<float64,rstring>" &&
+					lhsAttribType != "map<int32,int32>" && lhsAttribType != "map<int32,int64>" &&
+					lhsAttribType != "map<int64,int32>" && lhsAttribType != "map<int64,int64>" &&
+					lhsAttribType != "map<int32,float32>" && lhsAttribType != "map<int32,float64>" &&
+					lhsAttribType != "map<int64,float32>" && lhsAttribType != "map<int64,float64>" &&
+					lhsAttribType != "map<float32,int32>" && lhsAttribType != "map<float32,int64>" &&
+					lhsAttribType != "map<float64,int32>" && lhsAttribType != "map<float64,int64>" &&
+					lhsAttribType != "map<float32,float32>" && lhsAttribType != "map<float32,float64>" &&
+					lhsAttribType != "map<float64,float32>" && lhsAttribType != "map<float64,float64>") {
     					// This operator is not allowed for a given LHS attribute type.
     					if(currentOperationVerb == "<") {
     						error = INCOMPATIBLE_LESS_THAN_OPERATION_FOR_LHS_ATTRIB_TYPE;
@@ -3603,7 +3647,7 @@ namespace eval_predicate_functions {
     				} // End of else block.
     			} // End of validating arithmetic operator verbs.
 
-    			// We will allow contains, notContains and sizeXX only for
+    			// We will allow contains, notContains, containsCI, notContainsCI and sizeXX only for
     			// string, set, list and map based attributes.
 				// For maps, the first two of these verbs are applicable to
     			// check whether a map contains or notContains a given key.
@@ -3611,6 +3655,8 @@ namespace eval_predicate_functions {
     			// contents stored inside that collection.
     			if(currentOperationVerb == "contains" ||
     				currentOperationVerb == "notContains" ||
+					currentOperationVerb == "containsCI" ||
+					currentOperationVerb == "notContainsCI" ||
 					currentOperationVerb == "sizeEQ" ||
 					currentOperationVerb == "sizeNE" ||
 					currentOperationVerb == "sizeLT" ||
@@ -3642,6 +3688,10 @@ namespace eval_predicate_functions {
     						error = INCOMPATIBLE_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notContains") {
     						error = INCOMPATIBLE_NOT_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "containsCI") {
+    						error = INCOMPATIBLE_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "notContainsCI") {
+    						error = INCOMPATIBLE_NOT_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "sizeEQ") {
     						error = INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "sizeNE") {
@@ -3681,6 +3731,10 @@ namespace eval_predicate_functions {
         						error = INCOMPATIBLE_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
         					} else if(currentOperationVerb == "notContains") {
         						error = INCOMPATIBLE_NOT_CONTAINS_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "containsCI") {
+        						error = INCOMPATIBLE_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+        					} else if(currentOperationVerb == "notContainsCI") {
+        						error = INCOMPATIBLE_NOT_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
         					} else if(currentOperationVerb == "sizeEQ") {
         						error = INCOMPATIBLE_SIZE_EQ_OPERATION_FOR_LHS_ATTRIB_TYPE;
         					} else if(currentOperationVerb == "sizeNE") {
@@ -3716,7 +3770,11 @@ namespace eval_predicate_functions {
     			if(currentOperationVerb == "startsWith" ||
     				currentOperationVerb == "endsWith" ||
 					currentOperationVerb == "notStartsWith" ||
-					currentOperationVerb == "notEndsWith") {
+					currentOperationVerb == "notEndsWith" ||
+					currentOperationVerb == "startsWithCI" ||
+					currentOperationVerb == "endsWithCI" ||
+					currentOperationVerb == "notStartsWithCI" ||
+					currentOperationVerb == "notEndsWithCI") {
     				if(lhsAttribType != "rstring" &&
 						lhsAttribType != "list<rstring>" &&
 						lhsAttribType != "map<rstring,rstring>" &&
@@ -3731,8 +3789,16 @@ namespace eval_predicate_functions {
     						error = INCOMPATIBLE_ENDS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notStartsWith") {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else {
+    					} else if(currentOperationVerb == "notEndsWith") {
     						error = INCOMPATIBLE_NOT_ENDS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "startsWithCI") {
+    						error = INCOMPATIBLE_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "endsWithCI") {
+    						error = INCOMPATIBLE_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "notStartsWithCI") {
+    						error = INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else {
+    						error = INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					}
 
     					return(false);
@@ -3860,6 +3926,8 @@ namespace eval_predicate_functions {
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 	    			currentOperationVerb != "notContains" &&
+					currentOperationVerb != "containsCI" &&
+					currentOperationVerb != "notContainsCI" &&
 	    			Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "int32" ||
 					lhsAttribType == "uint32" || lhsAttribType == "int64" ||
@@ -3873,7 +3941,9 @@ namespace eval_predicate_functions {
 					lhsAttribType == "map<float32,int32>" || lhsAttribType == "map<float32,int64>" ||
 					lhsAttribType == "map<float64,int32>" || lhsAttribType == "map<float64,int64>")) ||
 					((currentOperationVerb == "contains" ||
-					currentOperationVerb == "notContains") &&
+					currentOperationVerb == "notContains" ||
+					currentOperationVerb == "containsCI" ||
+					currentOperationVerb == "notContainsCI") &&
 					(lhsAttribType == "set<int32>" || lhsAttribType == "set<int64>" ||
 					lhsAttribType == "list<int32>" || lhsAttribType == "list<int64>" ||
 					(lhsAttribType == "map<int32,rstring>" && lhsSubscriptForListAndMapAdded == false) ||
@@ -3990,6 +4060,8 @@ namespace eval_predicate_functions {
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 		    		currentOperationVerb != "notContains" &&
+					currentOperationVerb != "containsCI" &&
+					currentOperationVerb != "notContainsCI" &&
 					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "float32" ||
 					lhsAttribType == "float64" ||
@@ -4002,7 +4074,9 @@ namespace eval_predicate_functions {
 					lhsAttribType == "map<float32,float32>" || lhsAttribType == "map<float32,float64>" ||
 					lhsAttribType == "map<float64,float32>" || lhsAttribType == "map<float64,float64>")) ||
 					((currentOperationVerb == "contains" ||
-					currentOperationVerb == "notContains") &&
+					currentOperationVerb == "notContains" ||
+					currentOperationVerb == "containsCI" ||
+					currentOperationVerb == "notContainsCI") &&
 					(lhsAttribType == "set<float32>" || lhsAttribType == "set<float64>" ||
 					lhsAttribType == "list<float32>" || lhsAttribType == "list<float64>" ||
 					(lhsAttribType == "map<float32,rstring>" && lhsSubscriptForListAndMapAdded == false) ||
@@ -4127,6 +4201,8 @@ namespace eval_predicate_functions {
 				// we support contains and notContains only for the map key.
 				if(((currentOperationVerb != "contains" &&
 		    		currentOperationVerb != "notContains" &&
+					currentOperationVerb != "containsCI" &&
+					currentOperationVerb != "notContainsCI" &&
 					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "rstring" ||
 					lhsAttribType == "set<rstring>" ||
@@ -4137,7 +4213,9 @@ namespace eval_predicate_functions {
 					lhsAttribType == "map<float64,rstring>" ||
 					lhsAttribType == "map<rstring,rstring>")) ||
 					((currentOperationVerb == "contains" ||
-					currentOperationVerb == "notContains") &&
+					currentOperationVerb == "notContains" ||
+					currentOperationVerb == "containsCI" ||
+					currentOperationVerb == "notContainsCI") &&
 					(lhsAttribType == "rstring" ||
 					 lhsAttribType == "set<rstring>" || lhsAttribType == "list<rstring>" ||
 					 (lhsAttribType == "map<rstring,int32>" && lhsSubscriptForListAndMapAdded == false) ||
@@ -4168,12 +4246,17 @@ namespace eval_predicate_functions {
 					// Stay in a loop and collect all the values until
 					// we see a close quote.
 					while(idx < stringLength) {
-						if(myBlob[idx] == '\'' || myBlob[idx] == '"') {
+						// Do we have an RHS string end indicator?
+						// (single or double quote)?
+						if(isQuoteCharacterAtEndOfRhsString(myBlob, idx) == true) {
 							closeQuoteFound = true;
 							// Move past the close quote character.
 							idx++;
 							break;
 						} else {
+							// We will keep collecting any other character including
+							// the single or double quote character that is
+							// embedded as part of the RHS string.
 							rhsValue += myBlob[idx];
 						}
 
@@ -7182,9 +7265,30 @@ namespace eval_predicate_functions {
 		boolean & subexpressionEvalResult, int32 & error) {
     	error = ALL_CLEAR;
 
+    	// Check if we have a period character present in the
+    	// LHS and/or RHS values. This will come handy in the
+    	// string based relational operation logic that can be
+    	// found at the bottom of this method.
+    	boolean isLhsValueFloat = false;
+    	boolean isRhsValueFloat = false;
+		int32 lhsInt32 = 0;
+		int32 rhsInt32 = 0;
+		float64 lhsFloat64 = 0.0;
+		float64 rhsFloat64 = 0.0;
+
+    	if(Functions::String::findFirst(lhsValue, ".") != -1) {
+    		isLhsValueFloat = true;
+    	}
+
+    	if(Functions::String::findFirst(rhsValue, ".") != -1) {
+    		isRhsValueFloat = true;
+    	}
+
 		// Allowed operations for rstring are these:
 		// ==, !=, contains, notContains, startsWith,
-		// notStartsWith, endsWith, notEndsWith,sizeXX
+		// notStartsWith, endsWith, notEndsWith,
+        // containsCI, startsWithCI, endsWithCI, notContainsCI,
+        // notStartsWithCI, notEndsWithCI, sizeXX
 		if(operationVerb == "==") {
 			subexpressionEvalResult = (lhsValue == rhsValue) ? true : false;
 		} else if(operationVerb == "!=") {
@@ -7259,6 +7363,92 @@ namespace eval_predicate_functions {
 					subexpressionEvalResult = true;
 				}
 			}
+		} else if(operationVerb == "containsCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+
+			if(Functions::String::findFirst(lhsValueLower, rhsValueLower) != -1) {
+				subexpressionEvalResult = true;
+			} else {
+				subexpressionEvalResult = false;
+			}
+		} else if(operationVerb == "notContainsCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+
+			if(Functions::String::findFirst(lhsValueLower, rhsValueLower) == -1) {
+				subexpressionEvalResult = true;
+			} else {
+				subexpressionEvalResult = false;
+			}
+		} else if(operationVerb == "startsWithCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+
+			if(Functions::String::findFirst(lhsValueLower, rhsValueLower) == 0) {
+				subexpressionEvalResult = true;
+			} else {
+				subexpressionEvalResult = false;
+			}
+		} else if(operationVerb == "notStartsWithCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+
+			if(Functions::String::findFirst(lhsValueLower, rhsValueLower) != 0) {
+				subexpressionEvalResult = true;
+			} else {
+				subexpressionEvalResult = false;
+			}
+		} else if(operationVerb == "endsWithCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+			int32 lhsLen = Functions::String::length(lhsValueLower);
+			int32 rhsLen = Functions::String::length(rhsValueLower);
+
+			if(lhsLen < rhsLen) {
+				subexpressionEvalResult = false;
+			} else if(lhsLen == rhsLen) {
+				if(lhsValueLower == rhsValueLower) {
+					subexpressionEvalResult = true;
+				} else {
+					subexpressionEvalResult = false;
+				}
+			} else {
+				// e-g: LHS="Happy", RHS="ppy"
+				rstring str = Functions::String::substring(lhsValueLower,
+					lhsLen-rhsLen, rhsLen);
+
+				if(str == rhsValueLower) {
+					subexpressionEvalResult = true;
+				} else {
+					subexpressionEvalResult = false;
+				}
+			}
+		} else if(operationVerb == "notEndsWithCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+			int32 lhsLen = Functions::String::length(lhsValueLower);
+			int32 rhsLen = Functions::String::length(rhsValueLower);
+
+			if(lhsLen < rhsLen) {
+				subexpressionEvalResult = true;
+			} else if(lhsLen == rhsLen) {
+				if(lhsValueLower == rhsValueLower) {
+					subexpressionEvalResult = false;
+				} else {
+					subexpressionEvalResult = true;
+				}
+			} else {
+				// e-g: LHS="Happy", RHS="ppy"
+				rstring str = Functions::String::substring(lhsValueLower,
+					lhsLen-rhsLen, rhsLen);
+
+				if(str == rhsValueLower) {
+					subexpressionEvalResult = false;
+				} else {
+					subexpressionEvalResult = true;
+				}
+			}
 		} else if(operationVerb == "sizeEQ") {
 			subexpressionEvalResult = false;
 			int32 lhsSize = Functions::String::length(lhsValue);
@@ -7306,6 +7496,88 @@ namespace eval_predicate_functions {
 
 			if(lhsSize >= rhsInt32) {
 				subexpressionEvalResult = true;
+			}
+		// For a string based relational operation, we will
+		// convert it to an integer and then perform that task.
+		} else if(operationVerb == "<") {
+			subexpressionEvalResult = false;
+
+			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+				// The string values represent integers.
+				lhsInt32 = atoi(lhsValue.c_str());
+				rhsInt32 = atoi(rhsValue.c_str());
+
+				if(lhsInt32 < rhsInt32) {
+					subexpressionEvalResult = true;
+				}
+			} else {
+				// The string values represent float.
+				lhsFloat64 = atof(lhsValue.c_str());
+				rhsFloat64 = atof(rhsValue.c_str());
+
+				if(lhsFloat64 < rhsFloat64) {
+					subexpressionEvalResult = true;
+				}
+			}
+		} else if(operationVerb == "<=") {
+			subexpressionEvalResult = false;
+
+			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+				// The string values represent integers.
+				lhsInt32 = atoi(lhsValue.c_str());
+				rhsInt32 = atoi(rhsValue.c_str());
+
+				if(lhsInt32 <= rhsInt32) {
+					subexpressionEvalResult = true;
+				}
+			} else {
+				// The string values represent float.
+				lhsFloat64 = atof(lhsValue.c_str());
+				rhsFloat64 = atof(rhsValue.c_str());
+
+				if(lhsFloat64 <= rhsFloat64) {
+					subexpressionEvalResult = true;
+				}
+			}
+		} else if(operationVerb == ">") {
+			subexpressionEvalResult = false;
+
+			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+				// The string values represent integers.
+				lhsInt32 = atoi(lhsValue.c_str());
+				rhsInt32 = atoi(rhsValue.c_str());
+
+				if(lhsInt32 > rhsInt32) {
+					subexpressionEvalResult = true;
+				}
+			} else {
+				// The string values represent float.
+				lhsFloat64 = atof(lhsValue.c_str());
+				rhsFloat64 = atof(rhsValue.c_str());
+
+				if(lhsFloat64 > rhsFloat64) {
+					subexpressionEvalResult = true;
+				}
+			}
+		} else if(operationVerb == ">=") {
+			subexpressionEvalResult = false;
+
+			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+				// The string values represent integers.
+				lhsInt32 = atoi(lhsValue.c_str());
+				rhsInt32 = atoi(rhsValue.c_str());
+
+				if(lhsInt32 >= rhsInt32) {
+					subexpressionEvalResult = true;
+				}
+			} else {
+				// The string values represent float.
+				lhsFloat64 = atof(lhsValue.c_str());
+				rhsFloat64 = atof(rhsValue.c_str());
+
+				if(lhsFloat64 >= rhsFloat64) {
+					subexpressionEvalResult = true;
+				}
 			}
 		} else {
 			// Unsupported operation verb for rstring.
@@ -7766,6 +8038,122 @@ namespace eval_predicate_functions {
 			subexpressionCntInCurrentNestedGroup = 0;
 		}
 	} // End of getNestedSubexpressionGroupInfo
+
+	// This method checks to see if a quote character is
+	// embedded within a map key or if it represents an
+	// end of a map key string. This method gets
+	// called from the validateExpression and
+	// validateTupleAttribute methods.
+	boolean isQuoteCharacterAtEndOfMapKeyString(blob const & myBlob, int32 const & idx) {
+		// We will allow single or double quote characters within a given
+		// map key. This method checks whether a given quote character appears
+		// before it is immediately followed by a ] character.
+		int32 blobSize = Functions::Collections::size(myBlob);
+
+		if(idx >= blobSize) {
+			// Given idx falls outside the blob.
+			return(false);
+		}
+
+		if(myBlob[idx] != '"' && myBlob[idx] != '\'') {
+			// Given idx position doesn't hold a quote character.
+			return(false);
+		}
+
+		// Let us check if the next non-space character that we see is a ] character.
+		for(int32 i=idx+1; i<blobSize; i++) {
+			// If there are space characters appearing
+			// right after the given quote character, skip them.
+			if(myBlob[i] == ' ') {
+				continue;
+			}
+
+			if(myBlob[i] == ']') {
+				// The quote character is followed by a ] character.
+				// In that case, it marks the end of the map key string.
+				// This logic assumes that the map key string itself can't
+				// have a ] character as part of the key. If this assumption is
+				// not correct in real-life applications, then
+				// we have to adjust the logic in this method.
+				return(true);
+			} else {
+				// We see a character other than ].
+				// That means, the given quote character is not at the very end of the map key.
+				return(false);
+			}
+		} // End of for loop.
+
+		// We reached the end of the expression string.
+		// That means, we didn't see a ] character.
+		// Something is wrong with the expression string.
+		return(false);
+	} // End of isQuoteCharacterAtEndOfMapKeyString
+
+	// This method checks to see if a quote character is
+	// embedded within a RHS string or if it represents an
+	// end of an RHS string. This method gets
+	// called from the validateExpression method.
+	boolean isQuoteCharacterAtEndOfRhsString(blob const & myBlob, int32 const & idx) {
+		// We will allow single or double quote characters within a given
+		// RHS string. This method checks to see whether a given
+		// quote character appears before it is followed
+		// either by an end of the given expression string or by
+		// one of the logical operators.
+		int32 blobSize = Functions::Collections::size(myBlob);
+
+		if(idx >= blobSize) {
+			// Given idx falls outside the blob.
+			return(false);
+		}
+
+		if(myBlob[idx] != '"' && myBlob[idx] != '\'') {
+			// Given idx position doesn't hold a quote character.
+			return(false);
+		}
+
+		// Let us check if the next non-space character leads us to
+		// a logical operator i.e. && or ||.
+		for(int32 i=idx+1; i<blobSize; i++) {
+			// If we encounter another quote character, then the
+			// current quote character from where this method is
+			// being called is not at the end of the given RHS string.
+			if(myBlob[i] == '"' || myBlob[i] == '\'') {
+				return(false);
+			}
+
+			// Let us now check for the character sequence "&& ".
+			if(myBlob[i] == '&') {
+				// The quote character is followed by a & character.
+				// In that case, let us check if the next character in the
+				// sequence is another & followed by a space.
+				if(i < blobSize-2 && myBlob[i+1] == '&' &&
+					myBlob[i+2] == ' ') {
+					// This must be an end of quote character in
+					// the given RHS string.
+					return(true);
+				}
+			}
+
+			// Let us now check for the character sequence "|| ".
+			if(myBlob[i] == '|') {
+				// The quote character is followed by a | character.
+				// In that case, let us check if the next character in the
+				// sequence is another | followed by a space.
+				if(i < blobSize-2 && myBlob[i+1] == '|' &&
+					myBlob[i+2] == ' ') {
+					// This must be an end of quote character in
+					// the given RHS string.
+					return(true);
+				}
+			}
+
+			// Continue the loop.
+		} // End of for loop.
+
+		// We reached the end of the expression string.
+		// That means, the given quote character is the end of the RHS string.
+		return(true);
+	} // End of isQuoteCharacterAtEndOfRhsString
 
 	// This function fetches the value of a user given
 	// attribute present in a user given tuple. This function can be
@@ -8495,7 +8883,19 @@ namespace eval_predicate_functions {
 									if(openQuoteFound == false) {
 										openQuoteFound = true;
 									} else if(closeQuoteFound == false) {
-										closeQuoteFound = true;
+										// We can have single or double quote characters as
+										// part of the map key. So, we can consider this as
+										// an end of map key string's close quote only if it
+										// appears at the very end of the map key string.
+										if(isQuoteCharacterAtEndOfMapKeyString(myBlob, idx) == true) {
+											closeQuoteFound = true;
+										} else {
+											// It is an embedded quote character.
+											// We will add it to our map key value.
+											mapKeyValue += myBlob[idx];
+										}
+										// It will continue the while loop after the
+										// end of this if conditional code block.
 									} else {
 										stringCharacterFoundAfterCloseQuote = true;
 										break;

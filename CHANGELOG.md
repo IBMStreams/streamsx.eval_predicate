@@ -1,5 +1,11 @@
 # Changes
 
+## v1.0.5
+* Apr/25/2021
+* Added new operational verbs containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI and notEndsWithCI for case insensitive (CI) string operations.
+* Added support for relational operators to be used with string based attributes.
+* Added support for string values inside a rule expression to have single or double quote characters mixed with other characters.
+
 ## v1.0.4
 * Apr/23/2021
 * Added a new function get_tuple_attribute_value to fetch the value of a user given attribute name if present in a user given tuple.

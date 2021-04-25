@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Apr/23/2021
+Last modified on: Apr/25/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -33,17 +33,25 @@ given expression (rule) to access map elements.
 2) This new eval_predicate function allows the user
 given expression (rule) to access nested tuple attributes.
 
-3) It supports these special operations for rstring, set, list and map:
-   contains, startsWith, endsWith, notContains, notStartsWith, 
-   notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+3) This new eval_predicate function allows the user
+given expression (rule) to have operational verbs such as
+contains, startsWith, endsWith, notContains, notStartsWith, 
+notEndsWith. For case insensitive (CI) string operations, these
+operational verbs can be used: containsCI, startsWithCI, 
+endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI
+For checking the size of the set, list and map, these
+operational verbs can be used: sizeEQ, sizeNE, sizeLT, 
+sizeLE, sizeGT, sizeGE
 
 4) This new eval_predicate function supports the following operations.
 --> It supports these relational operations: ==, !=, <, <=, >, >=
 --> It supports these logical operations: ||, &&
 --> It supports these arithmetic operations: +, -, *, /, %
---> It supports these special operations: 
-    contains, startsWith, endsWith, notContains, notStartsWith, 
-    notEndsWith, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+--> It supports these special operations for rstring, set, list and map:
+    contains, startsWith, endsWith, notContains, notStartsWith,
+    notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI, 
+    notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE, 
+    sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -87,7 +95,7 @@ Following expressions use nested parenthesis.
 (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 
 In addition to showing how to do rule expression processing,
-this example also shows another feature of the eval_predicate
+this example shows another feature of the eval_predicate
 toolkit i.e. how to get a value of a specific tuple attribute as
 that is expressed via a user provided string input.
 In this example, you can search for get_tuple_attribute_value to
@@ -143,7 +151,8 @@ composite EvalPredicateExample {
 		// evaluate different kinds of expressions.
 		//
 		// 1) A simple flat schema with no nesting.
-		Ticker_t = rstring symbol, float32 price, uint32 quantity, boolean buyOrSell;
+		Ticker_t = rstring symbol, float32 price, rstring priceInString, 
+			uint32 quantity, boolean buyOrSell;
 
 		// 2) A schema with multilevel types with no nesting.
 		Person_t = rstring name, rstring title, 
@@ -187,6 +196,7 @@ composite EvalPredicateExample {
 					mutable Ticker_t myTicker = {};
 					myTicker.symbol = "INTC";
 					myTicker.price = (float32)79.25;
+					myTicker.priceInString = "79.25";
 					myTicker.quantity = 1287u;
 					myTicker.buyOrSell = true;
 					
@@ -226,8 +236,8 @@ composite EvalPredicateExample {
 					}
 					
 					// 1.3
-					rule = "symbol startsWith 'INTC' && price <= 97.34 && buyOrSell == true";
-					// rule = "(symbol startsWith 'INTC' && price <= 97.34 && buyOrSell == true)"; 
+					rule = "symbol startsWith 'INTC' && priceInString <= '97.34' && buyOrSell == true";
+					// rule = "(symbol startsWith 'INTC' && priceInString <= '97.34' && buyOrSell == true)"; 
 					result = eval_predicate(rule, myTicker, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -386,7 +396,8 @@ composite EvalPredicateExample {
 					myCity.name = "White Plains";
 					myCity.details.location.geo = {latitude=(float32)125.23, longitude=(float32)42.18};
 					myCity.details.location.info = {state="NY", zipCode="10601",
-						officials={"Mayor":"Jane Doe", "Supervisor":"John Tikki", "Clerk":"Jill Maidy"},
+						officials={"Mayor":"Jane Doe", "Supervisor":"John Tikki", 
+							"Clerk":"Jill Maidy", "People's Champion":"Martha O'Leary"},
 						businesses=["Pepsi", "Auto Nation", "Craft Foods"]};
 					myCity.details.weather = {temperature=(float32)45.28, humidity=(float32)37.39};
 					myCity.stats = {population=58129, numberOfSchools=8, numberOfHospitals=5};
@@ -583,6 +594,38 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 3.13: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
+					// 3.14
+					// Use of quote characters in map key string and in RHS string value.
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					rule = '(details.location.info.officials["People\'s Champion"] == "Martha O\'Leary")';
+					result = eval_predicate(rule, myCity, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 3.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 3.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 3.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// 3.15
+					// Another example for using quote characters in 
+					// map key string and in RHS string value.
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					rule = '(details.location.info.officials["People\'s Champion"] == "Martha O\'Leary" && ' +
+						' details.location.info.officials["People\'s Champion"] endsWith " O\'Donnel")';
+					result = eval_predicate(rule, myCity, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 3.15: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 3.15: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 3.15: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
 					// Get the value of a given tuple attribute name.
 					// Arg1: Fully qualified attribute name
 					// Arg2: Your tuple
@@ -592,7 +635,7 @@ composite EvalPredicateExample {
 					// Arg5: A boolean value to enable debug tracing inside this function.
 					// It is a void method that returns nothing.
 					//
-					// 3.14
+					// 3.16
 					// Get an rstring value of a given tuple attribute name.
 					attributeName = "name";
 					mutable rstring cityName = "";
@@ -600,16 +643,16 @@ composite EvalPredicateExample {
 						cityName, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.14: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.16: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)cityName);
 						}
 					} else {
-						printStringLn("Testcase 3.14: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.16: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
-					// 3.15
+					// 3.17
 					// Get a float32 value of a given tuple attribute name.
 					attributeName = "details.location.geo.latitude";
 					mutable float32 latitude = (float32)0.0;
@@ -617,16 +660,16 @@ composite EvalPredicateExample {
 						latitude, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.15: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.17: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)latitude);
 						}
 					} else {
-						printStringLn("Testcase 3.15: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.17: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
-					// 3.16
+					// 3.18
 					// Get a list<rstring>[idx] value of a given tuple attribute name.
 					attributeName = "details.location.info.businesses[2]";
 					mutable rstring businessName = "";
@@ -634,16 +677,16 @@ composite EvalPredicateExample {
 						businessName, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.16: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.18: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)businessName);
 						}
 					} else {
-						printStringLn("Testcase 3.16: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.18: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
-					// 3.17
+					// 3.19
 					// Get a map<rstring,rstring>[key] value of a given tuple attribute name.
 					attributeName = "details.location.info.officials['Mayor']";
 					mutable rstring mayor = "";
@@ -651,16 +694,36 @@ composite EvalPredicateExample {
 						mayor, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.17: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.19: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)mayor);
 						}
 					} else {
-						printStringLn("Testcase 3.17: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.19: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
-					// 3.18
+					// 3.20
+					// Get a map<rstring,rstring>[key] value of a given tuple attribute name.
+					// In this case, the map key string has a quote character in it.
+					// If the entire rule expression is in a single string literal,
+					// then the embedded quote characters may require escaping.
+					attributeName = 'details.location.info.officials["People\'s Champion"]';
+					mutable rstring peopleChampion = "";
+					get_tuple_attribute_value(attributeName, myCity,
+						peopleChampion, error, $EVAL_PREDICATE_TRACING);
+					
+					if(error == 0) {
+						printStringLn("Testcase 3.20: Tuple attribute value was fetched successfully.");
+						
+						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
+							printStringLn(attributeName + "=" + (rstring)peopleChampion);
+						}
+					} else {
+						printStringLn("Testcase 3.20: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+
+					// 3.21
 					// Get the entire list<rstring> value of a given tuple attribute name.
 					attributeName = "roadwayNumbers";
 					mutable list<int32> routeNumbers = [];
@@ -668,16 +731,16 @@ composite EvalPredicateExample {
 						routeNumbers, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.18: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.21: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)routeNumbers);
 						}
 					} else {
-						printStringLn("Testcase 3.18: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.21: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
-					// 3.19
+					// 3.22
 					// Get the entire map<rstring,rstring> value of a given tuple attribute name.
 					attributeName = "housingNumbers";
 					mutable map<rstring,int32> housingReport = {};
@@ -685,13 +748,13 @@ composite EvalPredicateExample {
 						housingReport, error, $EVAL_PREDICATE_TRACING);
 					
 					if(error == 0) {
-						printStringLn("Testcase 3.19: Tuple attribute value was fetched successfully.");
+						printStringLn("Testcase 3.22: Tuple attribute value was fetched successfully.");
 						
 						if($DISPLAY_FETCHED_ATTRIBUTE_VALUE == true) {
 							printStringLn(attributeName + "=" + (rstring)housingReport);
 						}
 					} else {
-						printStringLn("Testcase 3.19: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+						printStringLn("Testcase 3.22: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
 					// ============== TESTCASE GROUP 4 ============== 					
@@ -727,7 +790,7 @@ composite EvalPredicateExample {
 					//					
 					// 4.1
 					// Usage of list<TUPLE>
-					rule = "(((weatherList[0].sunnyDay == false) || (weatherList[0].city contains 'York') || (weatherList[0].humidity <= 12.87)) && ((weatherList[0].hourlyTemperatureMap[592311] != 89.16)) && weatherList[0].sunnyDay == true)";
+					rule = "(((weatherList[0].sunnyDay == false) || (weatherList[0].city containsCI 'york') || (weatherList[0].humidity <= 12.87)) && ((weatherList[0].hourlyTemperatureMap[592311] != 89.16)) && weatherList[0].sunnyDay == true)";
 					result = eval_predicate(rule, accuWeatherTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
