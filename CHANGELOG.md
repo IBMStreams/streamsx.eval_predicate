@@ -1,5 +1,9 @@
 # Changes
 
+## v1.0.6
+* Apr/29/2021
+* Added support for string values inside a rule expression to have parenthesis and square bracket characters mixed with other characters without impacting the parenthesis and square bracket matching in other parts of the rule expression.
+
 ## v1.0.5
 * Apr/25/2021
 * Added new operational verbs containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI and notEndsWithCI for case insensitive (CI) string operations.

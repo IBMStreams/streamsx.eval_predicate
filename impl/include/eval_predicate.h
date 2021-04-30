@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Apr/25/2021
+Last modified on: Apr/29/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -747,7 +747,7 @@ namespace eval_predicate_functions {
 	// Example of myTuple's schema that will be returned by this function:
 	// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 	//
-    rstring getSPLTypeName(ConstValueHandle const & handle, boolean trace=false) {
+    inline rstring getSPLTypeName(ConstValueHandle const & handle, boolean trace=false) {
     	SPL::Meta::Type mtype = handle.getMetaType();
 
     	// Go through the meta type of every single attribute and
@@ -943,7 +943,7 @@ namespace eval_predicate_functions {
     // It does it for flat as well as nested tuples. It takes the SPL::map
     // variable as an input via reference. It returns a boolean value to
     // indicate the result of the tuple attribute parsing.
-    boolean parseTupleAttributes(rstring const & myTupleSchema,
+    inline boolean parseTupleAttributes(rstring const & myTupleSchema,
     	SPL::map<rstring, rstring> & tupleAttributesMap,
 		int32 & error, boolean trace=false) {
     	error = ALL_CLEAR;
@@ -1214,7 +1214,7 @@ namespace eval_predicate_functions {
     // element from that map in the logic below is not valid on a const referenced map.
     // Hence, I made it as a non-constant reference. So, let us be careful inside this
     // function to use this map only for read and not do any accidental writes into this map.
-	void traceTupleAtttributeNamesAndValues(Tuple const & myTuple,
+	inline void traceTupleAtttributeNamesAndValues(Tuple const & myTuple,
 		SPL::map<rstring, rstring> & tupleAttributesMap, boolean trace) {
 		// This function will not do any work if tracing is turned off.
     	if(trace == false) {
@@ -1817,7 +1817,7 @@ namespace eval_predicate_functions {
 	// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
 	//
 	// Note: The space below between > > is a must. Otherwise, compiler will give an error.
-    boolean validateExpression(rstring const & expr,
+    inline boolean validateExpression(rstring const & expr,
         SPL::map<rstring, rstring> const & tupleAttributesMap,
     	SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
 		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
@@ -1858,6 +1858,7 @@ namespace eval_predicate_functions {
     	int32 stringLength = Functions::String::length(expr);
     	uint8 currentChar = 0, previousChar = 0;
     	stack <uint8> st;
+    	boolean openQuoteCharacterFound = false;
 
     	// At first, let us match all the parentheses and the square brackets.
     	for(int i=0; i<stringLength; i++) {
@@ -1877,6 +1878,63 @@ namespace eval_predicate_functions {
     		if(currentChar < ' ' || currentChar > '~') {
     			error = INVALID_CHARACTER_FOUND_IN_EXPRESSION;
     			return(false);
+    		}
+
+    		// We will permit the presence of open and close
+    		// characters within a quoted string value that
+    		// is part of a given expression string.
+    		// In order to do that, we must keep track of
+    		// quote characters to help us in knowing whether
+    		// we are within a string value or not at any given time.
+    		if(openQuoteCharacterFound == false &&
+    			(currentChar == '"' || currentChar == '\'')) {
+    			// This is a new open quote character we are seeing.
+    			// It could either be in LHS as part of a map key string or
+    			// in RHS as part of a string value.
+    			openQuoteCharacterFound = true;
+    			continue;
+    		}
+
+    		if(openQuoteCharacterFound == true &&
+    			(currentChar == '"' || currentChar == '\'')) {
+    			// We have to now ensure if it is an embedded
+    			// quote character within a string or it is a
+    			// quote character indicating the end of a
+    			// given string which could be an LHS map key
+    			// string or an RHS string value.
+    			//
+    			// Check if it indicates the end of a map key string.
+    			if(isQuoteCharacterAtEndOfMapKeyString(myBlob, i) == true) {
+    				// Reset this flag.
+    				openQuoteCharacterFound = false;
+        		// Check if it indicates the end of an RHS string value.
+    			} else if(isQuoteCharacterAtEndOfRhsString(myBlob, i) == true) {
+    				// Reset this flag.
+    				openQuoteCharacterFound = false;
+    			}
+
+				continue;
+    		}
+
+    		if(currentChar != '(' && currentChar != '[' &&
+    			currentChar != ')' && currentChar != ']') {
+    			// These are the characters we have no
+    			// need for pushing and popping in our stack.
+    			continue;
+    		}
+
+    		// If we are currently within a LHS/RHS string
+    		// component of a given expression string,
+    		// we will allow any embedded open and close
+    		// characters without pushing and popping them in
+    		// our stack used for parenthesis and bracket matching.
+    		if(openQuoteCharacterFound == true) {
+    			// This means, we are within a string component.
+    			// We will allow free form usage of these
+    			// open and close characters within a string.
+    			// No need to get them involved in our strict
+    			// parenthesis and bracket matching logic below.
+    			continue;
     		}
 
     		// As we encounter the allowed open characters, push them into the stack.
@@ -3071,7 +3129,9 @@ namespace eval_predicate_functions {
 							// Let us ensure that we see a quoted string until we see a
 							// close square bracket ].
 							while(stringMapKey == true && idx < stringLength) {
-								if(myBlob[idx] == ']') {
+								if(closeQuoteFound == true && myBlob[idx] == ']') {
+									// We will allow a close square bracket after a
+									// close quote has already been seen.
 									closeSquareBracketFound = true;
 									break;
 								}
@@ -4850,7 +4910,7 @@ namespace eval_predicate_functions {
     // ====================================================================
     // This method receives the evaluation plan pointer as input and
     // then runs the full evaluation of the associated expression.
-    boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
+    inline boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
     	Tuple const & myTuple, int32 & error, boolean trace=false) {
     	// This method will get called recursively when a list<TUPLE> is
     	// encountered in a given expression. It is important to note that
@@ -7224,7 +7284,7 @@ namespace eval_predicate_functions {
     //
     // This function returns the constant value handle of a given
     // attribute name present inside a given tuple.
-    void getConstValueHandleForTupleAttribute(Tuple const & myTuple,
+    inline void getConstValueHandleForTupleAttribute(Tuple const & myTuple,
     	rstring attributeName, ConstValueHandle & cvh) {
 		// This attribute may be inside a nested tuple. So, let us parse and
 		// get all the nested tuple names that are separated by a period character.
@@ -7260,7 +7320,7 @@ namespace eval_predicate_functions {
 	} // End of getConstValueHandleForTupleAttribute
 
     // This function performs the eval operations for rstring based attributes.
-    void performRStringEvalOperations(rstring const & lhsValue,
+    inline void performRStringEvalOperations(rstring const & lhsValue,
     	rstring const & rhsValue, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error) {
     	error = ALL_CLEAR;
@@ -7588,7 +7648,7 @@ namespace eval_predicate_functions {
 
     // This function performs the eval operations to check for the
     // existence of a given item in a set, list or map.
-    void performCollectionItemExistenceEvalOperations(boolean const & itemExists,
+    inline void performCollectionItemExistenceEvalOperations(boolean const & itemExists,
     	rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error) {
     	error = ALL_CLEAR;
@@ -7621,7 +7681,7 @@ namespace eval_predicate_functions {
 
     // This function performs the eval operations to check for the
     // size of a given collection type i.e. set, list, map.
-    void performCollectionSizeCheckEvalOperations(int32 const & lhsSize,
+    inline void performCollectionSizeCheckEvalOperations(int32 const & lhsSize,
     	int32 const & rhsInt32, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error) {
     	error = ALL_CLEAR;
@@ -7661,7 +7721,7 @@ namespace eval_predicate_functions {
     // LHS and RHS values for relationsal and arithmetic operations.
     // For arithmetic evals, operationVerb will have extra stuff. e-g: % 8 ==
 	template<class T1>
-    void performRelationalOrArithmeticEvalOperations(T1 const & lhsValue,
+    inline void performRelationalOrArithmeticEvalOperations(T1 const & lhsValue,
     	T1 const & rhsValue, rstring const & operationVerb,
 		T1 const & arithmeticOperandValue,
 		rstring const & postArithmeticOperationVerb,
@@ -7722,31 +7782,31 @@ namespace eval_predicate_functions {
 	} // End of performRelationalOrArithmeticEvalOperations
 
 	// This is an overloaded modulus function for int32.
-	void calculateModulus(int32 const & lhsValue,
+	inline void calculateModulus(int32 const & lhsValue,
 		int32 const & arithmeticOperandValue, int32 & result) {
 		result = lhsValue % arithmeticOperandValue;
 	}
 
 	// This is an overloaded modulus function for uint32.
-	void calculateModulus(uint32 const & lhsValue,
+	inline void calculateModulus(uint32 const & lhsValue,
 		uint32 const & arithmeticOperandValue, uint32 & result) {
 		result = lhsValue % arithmeticOperandValue;
 	}
 
 	// This is an overloaded modulus function for int64.
-	void calculateModulus(int64 const & lhsValue,
+	inline void calculateModulus(int64 const & lhsValue,
 		int64 const & arithmeticOperandValue, int64 & result) {
 		result = lhsValue % arithmeticOperandValue;
 	}
 
 	// This is an overloaded modulus function for uint64.
-	void calculateModulus(uint64 const & lhsValue,
+	inline void calculateModulus(uint64 const & lhsValue,
 		uint64 const & arithmeticOperandValue, uint64 & result) {
 		result = lhsValue % arithmeticOperandValue;
 	}
 
 	// This is an overloaded modulus function for float32.
-	void calculateModulus(float32 const & lhsValue,
+	inline void calculateModulus(float32 const & lhsValue,
 		float32 const & arithmeticOperandValue, float32 & result) {
 		// We will use the C++ fmod function instead of using the
 		// % operator which is not supported for float values in C++.
@@ -7754,7 +7814,7 @@ namespace eval_predicate_functions {
 	}
 
 	// This is an overloaded modulus function for float64.
-	void calculateModulus(float64 const & lhsValue,
+	inline void calculateModulus(float64 const & lhsValue,
 		float64 const & arithmeticOperandValue, float64 & result) {
 		// We will use the C++ fmod function instead of using the
 		// % operator which is not supported for float values in C++.
@@ -7762,7 +7822,7 @@ namespace eval_predicate_functions {
 	}
 
 	// This is an overloaded modulus function for boolean.
-	void calculateModulus(boolean const & lhsValue,
+	inline void calculateModulus(boolean const & lhsValue,
 		boolean const & arithmeticOperandValue, boolean & result) {
 		// This is a dummy one for boolean type and it will never get called.
 		result = false;
@@ -7801,7 +7861,7 @@ namespace eval_predicate_functions {
 	// processed successfully. Depending on which stage the
 	// expression processing takes place, this function can get
 	// called from different sections in the expression validation method.
-	void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
+	inline void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
 		rstring & subexpressionId) {
 		// Depending on the nested or non-nested nature,
 		// subexpression id will carry a different
@@ -7900,7 +7960,7 @@ namespace eval_predicate_functions {
 
 	// This function checks if the next non-space character is
 	// an open parenthesis.
-	boolean isNextNonSpaceCharacterOpenParenthesis(blob const & myBlob,
+	inline boolean isNextNonSpaceCharacterOpenParenthesis(blob const & myBlob,
 		int32 const & idx, int32 const & stringLength) {
 		for(int32 i=idx; i<stringLength-1; i++) {
 			if(myBlob[i+1] == ' ') {
@@ -7925,7 +7985,7 @@ namespace eval_predicate_functions {
 	// It checks if the current single subexpression is
 	// enclosed within a parenthesis.
 	// e-g: (b contains "xyz")
-	boolean isThisAnEnclosedSingleSubexpression(rstring const & expr,
+	inline boolean isThisAnEnclosedSingleSubexpression(rstring const & expr,
 		int32 const & idx) {
 		// We have to find if a close parenthesis comes before or
 		// after a possible logical operator. If it comes before,
@@ -7963,7 +8023,7 @@ namespace eval_predicate_functions {
 
 	// This function checks if the next non-space character is
 	// a close parenthesis.
-	boolean isNextNonSpaceCharacterCloseParenthesis(blob const & myBlob,
+	inline boolean isNextNonSpaceCharacterCloseParenthesis(blob const & myBlob,
 		int32 const & idx, int32 const & stringLength) {
 		for(int32 i=idx; i<stringLength-1; i++) {
 			if(myBlob[i+1] == ' ') {
@@ -7987,7 +8047,7 @@ namespace eval_predicate_functions {
 	// in a nested group. If it is, then it gets the
 	// relevant details such as the number of subexpressions
 	// in that group and the intra nested subexpression logical operator.
-	void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
+	inline void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
 		SPL::list<rstring> const & subexpressionIdsList,
 		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
 		int32 & subexpressionCntInCurrentNestedGroup,
@@ -8044,7 +8104,7 @@ namespace eval_predicate_functions {
 	// end of a map key string. This method gets
 	// called from the validateExpression and
 	// validateTupleAttribute methods.
-	boolean isQuoteCharacterAtEndOfMapKeyString(blob const & myBlob, int32 const & idx) {
+	inline boolean isQuoteCharacterAtEndOfMapKeyString(blob const & myBlob, int32 const & idx) {
 		// We will allow single or double quote characters within a given
 		// map key. This method checks whether a given quote character appears
 		// before it is immediately followed by a ] character.
@@ -8069,12 +8129,19 @@ namespace eval_predicate_functions {
 			}
 
 			if(myBlob[i] == ']') {
-				// The quote character is followed by a ] character.
+				// The quote character is immediately followed by a ] character.
 				// In that case, it marks the end of the map key string.
-				// This logic assumes that the map key string itself can't
-				// have a ] character as part of the key. If this assumption is
-				// not correct in real-life applications, then
-				// we have to adjust the logic in this method.
+				// * * * * L O G I C  A L E R T * * * *
+				// This logic assumes that the map key string itself won't
+				// have a ] character immediately after an embedded quote
+				// character as part of the key. This is a known assumption and
+				// a restriction in this logic at this time. If this assumption is
+				// not correct and if it produces a wrong result in real-life
+				// applications, then we have to adjust the logic in this method.
+				// Example of such a condition: Body.MachineStatus.Status["K(\']e[y)2"]
+				// As it can be seen, an embedded quote character is immediately
+				// followed by a ] character. That rare condition will produce a
+				// wrong result in this logic.
 				return(true);
 			} else {
 				// We see a character other than ].
@@ -8093,7 +8160,7 @@ namespace eval_predicate_functions {
 	// embedded within a RHS string or if it represents an
 	// end of an RHS string. This method gets
 	// called from the validateExpression method.
-	boolean isQuoteCharacterAtEndOfRhsString(blob const & myBlob, int32 const & idx) {
+	inline boolean isQuoteCharacterAtEndOfRhsString(blob const & myBlob, int32 const & idx) {
 		// We will allow single or double quote characters within a given
 		// RHS string. This method checks to see whether a given
 		// quote character appears before it is followed
@@ -8235,7 +8302,7 @@ namespace eval_predicate_functions {
 	// This method validates the user given tuple attribute name for
 	// its syntax correctness. It is called from the
 	// get_tuple_attribute_value method above.
-    boolean validateTupleAttributeName(rstring const & attributeName,
+    inline boolean validateTupleAttributeName(rstring const & attributeName,
         SPL::map<rstring, rstring> const & tupleAttributesMap,
     	SPL::list<rstring> & attributeNameLayoutList,
     	int32 & error, int32 & validationStartIdx, boolean trace=false) {
@@ -8869,7 +8936,9 @@ namespace eval_predicate_functions {
 							// Let us ensure that we see a quoted string until we see a
 							// close square bracket ].
 							while(stringMapKey == true && idx < stringLength) {
-								if(myBlob[idx] == ']') {
+								if(closeQuoteFound == true && myBlob[idx] == ']') {
+									// We will allow a close square bracket after a
+									// close quote has already been seen.
 									closeSquareBracketFound = true;
 									break;
 								}
@@ -9062,7 +9131,7 @@ namespace eval_predicate_functions {
     // This method gets the value held in a given tuple by
     // a given attribute name.
     template<class T1, class T2>
-    void fetchTupleAttributeValue(rstring const & attributeName,
+    inline void fetchTupleAttributeValue(rstring const & attributeName,
     	SPL::map<rstring, rstring> const & tupleAttributesMap,
 		SPL::list<rstring> const & attributeNameLayoutList,
 		T1 const & myTuple, T2 & value, int32 & error, boolean trace) {
