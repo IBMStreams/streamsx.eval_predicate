@@ -1,5 +1,10 @@
 # Changes
 
+## v1.0.7
+* May/05/2021
+* Made all C++ functions as inline.
+* Added support for lexical comparison of string attributes with RHS string values.
+
 ## v1.0.6
 * Apr/29/2021
 * Added support for string values inside a rule expression to have parenthesis and square bracket characters mixed with other characters without impacting the parenthesis and square bracket matching in other parts of the rule expression.

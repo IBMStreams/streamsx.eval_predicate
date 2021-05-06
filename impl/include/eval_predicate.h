@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Apr/29/2021
+Last modified on: May/05/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -276,9 +276,17 @@ namespace eval_predicate_functions {
 	using namespace SPL;
 
 	// ====================================================================
-	// Class that represents the evaluation plan for a given expression.
-	// In this class, we store the data structures required to
-	// evaluate each subexpression present within a given full expression.
+	// This is the crucial data structure that holds different
+	// subexpressions found in the user given expression string.
+	// It forms the basis for having a cache for the repeated
+	// evaluation of a given expression. The main idea here is to
+	// have a full evaluation plan made ready for use whenever
+	// needed. That will allow us to evaluate a given expression string
+	// using a readily available evaluation plan by executing its steps.
+	// Following is the class that represents the evaluation plan for a
+	// given expression. In this class, we store the data structures
+	// required to evaluate each subexpression present within a given
+	// full expression string.
 	//
 	class ExpressionEvaluationPlan {
 		public:
@@ -405,6 +413,8 @@ namespace eval_predicate_functions {
     void performRStringEvalOperations(rstring const & lhsValue,
     	rstring const & rhsValue, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
+    // Check if a given string represents a number (integer or float).
+    boolean isNumber(rstring const & str);
     // Perform existence check eval operations for a collection based LHS attribute.
     void performCollectionItemExistenceEvalOperations(boolean const & itemExists,
     	rstring const & operationVerb,
@@ -492,7 +502,7 @@ namespace eval_predicate_functions {
 	// Arg2: Your tuple
 	// Arg3: A mutable int32 variable to receive non-zero eval error code if any.
 	// Arg4: A boolean value to enable debug tracing inside this function.
-	// It returns true if the expression evalutation is successful.
+	// It returns true if the expression evaluation is successful.
     template<class T1>
     inline boolean eval_predicate(rstring const & expr,
     	T1 const & myTuple, int32 & error, boolean trace=false) {
@@ -1886,6 +1896,13 @@ namespace eval_predicate_functions {
     		// In order to do that, we must keep track of
     		// quote characters to help us in knowing whether
     		// we are within a string value or not at any given time.
+    		// This logic helps us in skipping the parenthesis and
+    		// bracket matching when those characters appear within
+    		// an LHS and/or RHS string in a given expression.
+    		//
+    		// Example of such an expression string:
+    		// '(Body.MachineStatus.Status["K(\'e]y)2"] == "V[a\'l)u(e[2")'
+    		//
     		if(openQuoteCharacterFound == false &&
     			(currentChar == '"' || currentChar == '\'')) {
     			// This is a new open quote character we are seeing.
@@ -1913,13 +1930,13 @@ namespace eval_predicate_functions {
     				openQuoteCharacterFound = false;
     			}
 
-				continue;
+    			continue;
     		}
 
     		if(currentChar != '(' && currentChar != '[' &&
     			currentChar != ')' && currentChar != ']') {
-    			// These are the characters we have no
-    			// need for pushing and popping in our stack.
+    			// These are the regular characters for which we have
+    			// no need for pushing and popping in our stack.
     			continue;
     		}
 
@@ -7327,8 +7344,10 @@ namespace eval_predicate_functions {
 
     	// Check if we have a period character present in the
     	// LHS and/or RHS values. This will come handy in the
-    	// string based relational operation logic that can be
-    	// found at the bottom of this method.
+    	// string based relational operation logic that is
+    	// done at the bottom of this method.
+    	boolean isLhsValueString = false;
+    	boolean isRhsValueString = false;
     	boolean isLhsValueFloat = false;
     	boolean isRhsValueFloat = false;
 		int32 lhsInt32 = 0;
@@ -7336,11 +7355,19 @@ namespace eval_predicate_functions {
 		float64 lhsFloat64 = 0.0;
 		float64 rhsFloat64 = 0.0;
 
-    	if(Functions::String::findFirst(lhsValue, ".") != -1) {
+		// Find out if a given string represents a string or a number.
+		isLhsValueString = (isNumber(lhsValue) == true ? false : true);
+		isRhsValueString = (isNumber(rhsValue) == true ? false : true);
+
+		// Find out if LHS represents a float number.
+    	if(isLhsValueString == false &&
+    		Functions::String::findFirst(lhsValue, ".") != -1) {
     		isLhsValueFloat = true;
     	}
 
-    	if(Functions::String::findFirst(rhsValue, ".") != -1) {
+    	// Find out if RHS represents a float number.
+    	if(isRhsValueString == false &&
+    		Functions::String::findFirst(rhsValue, ".") != -1) {
     		isRhsValueFloat = true;
     	}
 
@@ -7558,11 +7585,19 @@ namespace eval_predicate_functions {
 				subexpressionEvalResult = true;
 			}
 		// For a string based relational operation, we will
-		// convert it to an integer and then perform that task.
+		// convert it to an integer or float and then perform that task.
+		// If it is not a number, we will then do a string lexical comparison.
 		} else if(operationVerb == "<") {
 			subexpressionEvalResult = false;
 
-			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+			if(isLhsValueString == true && isRhsValueString == true) {
+				// They are pure strings. We will do a lexical comparison.
+				int32 result = lhsValue.compare(rhsValue);
+
+				if(result < 0) {
+					subexpressionEvalResult = true;
+				}
+			} else if(isLhsValueFloat == false && isRhsValueFloat == false) {
 				// The string values represent integers.
 				lhsInt32 = atoi(lhsValue.c_str());
 				rhsInt32 = atoi(rhsValue.c_str());
@@ -7582,7 +7617,14 @@ namespace eval_predicate_functions {
 		} else if(operationVerb == "<=") {
 			subexpressionEvalResult = false;
 
-			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+			if(isLhsValueString == true && isRhsValueString == true) {
+				// They are pure strings. We will do a lexical comparison.
+				int32 result = lhsValue.compare(rhsValue);
+
+				if(result <= 0) {
+					subexpressionEvalResult = true;
+				}
+			} else if(isLhsValueFloat == false && isRhsValueFloat == false) {
 				// The string values represent integers.
 				lhsInt32 = atoi(lhsValue.c_str());
 				rhsInt32 = atoi(rhsValue.c_str());
@@ -7602,7 +7644,14 @@ namespace eval_predicate_functions {
 		} else if(operationVerb == ">") {
 			subexpressionEvalResult = false;
 
-			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+			if(isLhsValueString == true && isRhsValueString == true) {
+				// They are pure strings. We will do a lexical comparison.
+				int32 result = lhsValue.compare(rhsValue);
+
+				if(result > 0) {
+					subexpressionEvalResult = true;
+				}
+			} else if(isLhsValueFloat == false && isRhsValueFloat == false) {
 				// The string values represent integers.
 				lhsInt32 = atoi(lhsValue.c_str());
 				rhsInt32 = atoi(rhsValue.c_str());
@@ -7622,7 +7671,14 @@ namespace eval_predicate_functions {
 		} else if(operationVerb == ">=") {
 			subexpressionEvalResult = false;
 
-			if(isLhsValueFloat == false && isRhsValueFloat == false) {
+			if(isLhsValueString == true && isRhsValueString == true) {
+				// They are pure strings. We will do a lexical comparison.
+				int32 result = lhsValue.compare(rhsValue);
+
+				if(result >= 0) {
+					subexpressionEvalResult = true;
+				}
+			} else if(isLhsValueFloat == false && isRhsValueFloat == false) {
 				// The string values represent integers.
 				lhsInt32 = atoi(lhsValue.c_str());
 				rhsInt32 = atoi(rhsValue.c_str());
@@ -7645,6 +7701,47 @@ namespace eval_predicate_functions {
 			subexpressionEvalResult = false;
 		}
     } // End of performRStringEvalOperations
+
+    // This method checks if a given string is made of
+    // numeric (integer or float) or alphanumeric (string) characters.
+    inline boolean isNumber(rstring const & str) {
+    	boolean periodCharacterFound = false;
+    	int32 stringLength = Functions::String::length(str);
+    	SPL::blob myBlob = Functions::String::convertToBlob(str);
+
+    	// Stay in a loop and check if a given character is
+    	// a numeric or alphabetical one.
+    	for(int32 i=0; i<stringLength; i++) {
+    		uint8 myChar = myBlob[i];
+
+    		if (myChar >= 48 && myChar <= 57) {
+    			// It falls within the range '0' to '9'.
+    			// Keep checking the next characters.
+    			continue;
+    		} else {
+    			if(myChar == 46 && periodCharacterFound == false) {
+    				// ASCII 46 is a period character.
+    				// In case of a float number, we will
+    				// allow only one period character.
+    				periodCharacterFound = true;
+    				continue;
+    			}
+
+    			// This is not a numeric character.
+    			// So, it is not a number.
+    			return(false);
+    		}
+    	} // End of for loop.
+
+    	if(stringLength == 1 && periodCharacterFound == true) {
+    		// If the only character in this string is a period
+    		// character, then it doesn't represent a number.
+    		return(false);
+    	}
+
+    	// We have a number.
+    	return(true);
+    } // End of isNumber
 
     // This function performs the eval operations to check for the
     // existence of a given item in a set, list or map.
@@ -7718,7 +7815,7 @@ namespace eval_predicate_functions {
     } // End of performCollectionSizeCheckEvalOperations
 
     // This function performs the evaluations for non-string based
-    // LHS and RHS values for relationsal and arithmetic operations.
+    // LHS and RHS values for relational and arithmetic operations.
     // For arithmetic evals, operationVerb will have extra stuff. e-g: % 8 ==
 	template<class T1>
     inline void performRelationalOrArithmeticEvalOperations(T1 const & lhsValue,
@@ -7831,7 +7928,7 @@ namespace eval_predicate_functions {
 	// This function performs the evaluation of a given arithmetic result with
 	// a given RHS value using the specified post arithmetic operation verb.
 	template<class T1>
-	void performPostArithmeticEvalOperations(T1 const & arithmeticResult,
+	inline void performPostArithmeticEvalOperations(T1 const & arithmeticResult,
 		T1 const & rhsValue, rstring const & postArithmeticOperationVerb,
 		boolean & subexpressionEvalResult, int32 & error) {
 		error = ALL_CLEAR;
