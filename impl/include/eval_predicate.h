@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: May/05/2021
+Last modified on: May/23/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -100,6 +100,13 @@ So, I took a fresh approach to write this new eval_predicate function
 with my own ideas along with sufficient commentary to explain the logic.
 That obviously led to implementation and feature differences between
 the built-in evalPredicate and my new eval_predicate in this file.
+As this toolkit evolved from start to finish, it ended up with
+very good features needed to make it as a great rule processing
+engine within the IBM Streams product. If positioned properly,
+this can be a huge difference maker for IBM Streams in the
+competitive marketplace. It will also help customers and partners
+to create useful and powerful custom rule processors for many
+use cases in different business domains.
 ============================================================
 */
 #ifndef FUNCTIONS_H_
@@ -120,7 +127,8 @@ the built-in evalPredicate and my new eval_predicate in this file.
 #include <tr1/unordered_map>
 
 // ====================================================================
-// All the constants are defined here.
+// All the constants are defined here. It covers all the
+// error codes returned by the eval_predicate function.
 #define ALL_CLEAR 0
 #define EMPTY_EXPRESSION 1
 #define MISSING_OPEN_TUPLE_TAG 2
@@ -283,6 +291,8 @@ namespace eval_predicate_functions {
 	// have a full evaluation plan made ready for use whenever
 	// needed. That will allow us to evaluate a given expression string
 	// using a readily available evaluation plan by executing its steps.
+	// In essence, it is a blueprint that defines the expression evaluation plan.
+	//
 	// Following is the class that represents the evaluation plan for a
 	// given expression. In this class, we store the data structures
 	// required to evaluate each subexpression present within a given
@@ -346,11 +356,29 @@ namespace eval_predicate_functions {
 
 		private:
 			// Private member variables.
+			// The entire user given expression is stored in this variable.
 			rstring expression;
+
+			// The schema literal for the tuple associated with a fully
+			// validated expression is stored in this variable.
 			rstring tupleSchema;
+
+			// This map contains the details about the different
+			// subexpressions present in a fully validated expression.
+			// It is important to understand the structure of this map which
+			// is explained in great detail throughout this file.
+			// One such explanation is available around line 635 of this file.
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
+
+			// This list provides the subexpression map keys in sorted order.
 			SPL::list<rstring> subexpressionsMapKeys;
+
+			// This map contains the logical operators used within a subexpression.
+			// Key for this map is the subexpression id and the value is the logical operator.
 			SPL::map<rstring, rstring> intraNestedSubexpressionLogicalOperatorsMap;
+
+			// This list contains the logical operators used in between
+			// different subexpressions present in a user given expression string.
 			SPL::list<rstring> interSubexpressionLogicalOperatorsList;
 	};
 
@@ -423,7 +451,7 @@ namespace eval_predicate_functions {
     void performCollectionSizeCheckEvalOperations(int32 const & lhsSize,
     	int32 const & rhsInt32, rstring const & operationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
-    // Perform relational or arithmetic eval operatios.
+    // Perform relational or arithmetic eval operations.
 	template<class T1>
 	void performRelationalOrArithmeticEvalOperations(T1 const & lhsValue,
 	    T1 const & rhsValue, rstring const & operationVerb,
@@ -488,7 +516,6 @@ namespace eval_predicate_functions {
     	SPL::map<rstring, rstring> const & tupleAttributesMap,
 		SPL::list<rstring> const & attributeNameLayoutList,
 		T1 const & myTuple, T2 & value, int32 & error, boolean trace);
-
     // ====================================================================
 
 	// Evaluate a given expression.
@@ -602,7 +629,7 @@ namespace eval_predicate_functions {
 			}
 
 			// If trace is enabled let us do the introspection of the
-			// user provided tuple and display its sttribute names and values.
+			// user provided tuple and display its attribute names and values.
 			traceTupleAtttributeNamesAndValues(myTuple, tupleAttributesMap, trace);
 
 			// Note: The space below between > > is a must. Otherwise, compiler will give an error.
@@ -740,7 +767,7 @@ namespace eval_predicate_functions {
 	    } // End of the else block.
 
 	    // We have a valid iterator from the eval plan cache for the given expression.
-	    // We can go ahead execute the evaluation plan now.
+	    // We can go ahead and execute the evaluation plan now.
 	    SPLAPPTRC(L_TRACE, "Begin timing measurement 4", "ExpressionEvaluation");
 	    // We are making a non-recursive call.
 	    result = evaluateExpression(it->second, myTuple, error, trace);
@@ -1022,7 +1049,7 @@ namespace eval_predicate_functions {
 
 				// The attribute name of this nested tuple is just after the
 				// close angle bracket where we are at now. Let us parse that tuple name.
-				// Let us locate either the comma or an angle bracket after thetuple  name.
+				// Let us locate either the comma or an angle bracket after the tuple name.
 				int32 idx3 = -1;
 
 				for(int x=idx2+1; x<stringLength; x++) {
@@ -10181,3 +10208,33 @@ namespace eval_predicate_functions {
 // ====================================================================
 
 #endif
+
+/*
+==================================================================
+Coda
+----
+Whatever lies ahead for IBM Streams beyond June/2021, I'm proud to
+have played a key role in this product team from 2007 to 2021.
+IBM Streams gave me so many marvelous opportunities to create
+amazing extensions, build cutting edge streaming analytics solutions,
+coach/train top notch customers and co-create meaningful
+production-ready software assets for such customers. It formed the
+best period in my 36 years of Software career thus far. I'm lucky to
+get a chance to build this toolkit as my final official project for
+IBM Streams. That too for meeting a critical business need of a
+prestigious customer in the semiconductor manufacturing industry.
+This particular toolkit is technically challenging and
+super interesting. I'm glad that it serves as a bookend for my
+technical contributions to the incomparable IBM Streams. I'm hopeful
+that I will get another chance to associate with this wonderful
+product as it finds a new home soon either inside or outside of IBM.
+Until then, I will continue to reminisce this unforgettable journey
+made possible by passionate researchers, engineers and managers who
+are all simply world class in their talent and camaraderie.
+
+Long live IBM Streams.
+
+Yours truly,
+SN
+==================================================================
+*/

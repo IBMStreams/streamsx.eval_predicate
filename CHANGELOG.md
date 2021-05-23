@@ -1,5 +1,9 @@
 # Changes
 
+## v1.0.8
+* May/23/2021
+* Added more commentary and fixed a few typos.
+
 ## v1.0.7
 * May/05/2021
 * Made all C++ functions as inline.
