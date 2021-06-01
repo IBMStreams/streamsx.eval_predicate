@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Apr/25/2021
+Last modified on: June/01/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -6767,6 +6767,39 @@ composite FunctionalTests {
 						printStringLn("Testcase A53.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
+					
+					// A54.1 (Use of in for membership test.)
+					// It does case sensitive membership test using a list literal string.
+					type Role_t = rstring role, int32 x, float64 y;
+					mutable Role_t myRole = {};
+					myRole.role = "Admin";
+
+					_rule = 'role in ["Developer", "Tester", "Admin", "Manager"]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A54.2 (Use of inCI for membership test.)
+					// It does case insensitive membership test using a list literal string.
+					myRole.role = "mAnAgEr";
+					_rule = 'role inCI ["Developer", "Tester", "Admin", "Manager"]';
+
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
 				} // End of onTuple MTD.
 		} // End of the HappyPathSink operator.
 		
@@ -7955,6 +7988,7 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase B80.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
+					// -------------------------
 					
 					// B81.1 (SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB 122)
 					// Possible choices: sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
@@ -8070,6 +8104,59 @@ composite FunctionalTests {
 						printStringLn("Testcase B81.9: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase B81.9: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					// -------------------------
+					
+					// B82.1 (INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE 146)
+					type Role2_t = rstring role, int32 x, float64 y;
+					mutable Role2_t myRole = {};
+					myRole.role = "Tester";
+					_rule = 'x in ["Developer", "Tester", "Admin", "Manager"]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B82.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B82.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B82.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// B82.2 (INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 147)
+					_rule = 'x inCI ["Developer", "Tester", "Admin", "Manager"]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B82.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B82.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B82.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// B82.3 (RHS_VALUE_WITH_MISSING_OPEN_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 149)
+					_rule = 'role in "Developer", "Tester", "Admin", "Manager"';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B82.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B82.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B82.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+										
+					// B82.4 (INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB 151)
+					// It has a missing double quote for a list literal string member.
+					_rule = 'role in ["Developer", "Tester", "Admin", "Manager]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase B82.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase B82.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase B82.4: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.

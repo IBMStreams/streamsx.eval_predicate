@@ -113,7 +113,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
 2. This new eval_predicate function allows the user defined rule expression to access nested tuple attributes.
 
-3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE.
+3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE.
 
 4. This new eval_predicate function supports the following operations inside the rule.
 
@@ -123,7 +123,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
    c. It supports these arithmetic operations: +, -, *, /, %
 
-   d. It supports these special operations for rstring, set, list and map: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+   d. It supports these special operations for rstring, set, list and map: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 
    e. No bitwise operations are supported at this time.
 

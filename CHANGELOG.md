@@ -1,5 +1,9 @@
 # Changes
 
+## v1.0.9
+* June/01/2021
+* Added two new operational verbs: in and inCI.
+
 ## v1.0.8
 * May/23/2021
 * Added more commentary and fixed a few typos.

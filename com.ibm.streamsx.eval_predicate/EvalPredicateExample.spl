@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Apr/25/2021
+Last modified on: June/01/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -35,12 +35,12 @@ given expression (rule) to access nested tuple attributes.
 
 3) This new eval_predicate function allows the user
 given expression (rule) to have operational verbs such as
-contains, startsWith, endsWith, notContains, notStartsWith, 
-notEndsWith. For case insensitive (CI) string operations, these
-operational verbs can be used: containsCI, startsWithCI, 
-endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI
+contains, startsWith, endsWith, notContains, notStartsWith,
+notEndsWith, in. For case insensitive (CI) string operations, these
+operational verbs can be used: containsCI, startsWithCI,
+endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI
 For checking the size of the set, list and map, these
-operational verbs can be used: sizeEQ, sizeNE, sizeLT, 
+operational verbs can be used: sizeEQ, sizeNE, sizeLT,
 sizeLE, sizeGT, sizeGE
 
 4) This new eval_predicate function supports the following operations.
@@ -48,10 +48,10 @@ sizeLE, sizeGT, sizeGE
 --> It supports these logical operations: ||, &&
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations for rstring, set, list and map:
-    contains, startsWith, endsWith, notContains, notStartsWith,
-    notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI, 
-    notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE, 
-    sizeGT, sizeGE
+    contains, startsWith, endsWith, notContains, notStartsWith, 
+    notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
+    notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, 
+    sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -856,6 +856,42 @@ composite EvalPredicateExample {
 						}
 					} else {
 						printStringLn("Testcase 4.4: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
+					}
+					
+					// ============== TESTCASE GROUP 5 ============== 	
+					type Role_t = rstring role, int32 x, float64 y;
+					mutable Role_t myRole = {};
+					myRole.role = "Admin";
+					
+					//					
+					// 5.1
+					// Usage of in 
+					// It does case sensitive membership test using a list literal string.
+					rule = 'role in ["Developer", "Tester", "Admin", "Manager"]';
+					result = eval_predicate(rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 5.1: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 5.1: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 5.1: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					//					
+					// 5.2
+					// Usage of inCI
+					// It does case insensitive membership test using a list literal string.
+					myRole.role = "mAnAgEr";
+					rule = 'role inCI ["Developer", "Tester", "Admin", "Manager"]';
+					result = eval_predicate(rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 5.2: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 5.2: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 5.2: Evaluation execution failed. Error=" + (rstring)error);
 					}
 				} // End of onTuple S
 		} // End of the Custom operator.

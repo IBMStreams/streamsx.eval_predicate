@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: May/23/2021
+Last modified on: June/01/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -27,9 +27,9 @@ given expression (rule) to access nested tuple attributes.
 3) This new eval_predicate function allows the user
 given expression (rule) to have operational verbs such as
 contains, startsWith, endsWith, notContains, notStartsWith,
-notEndsWith. For case insensitive (CI) string operations, these
+notEndsWith, in. For case insensitive (CI) string operations, these
 operational verbs can be used: containsCI, startsWithCI,
-endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI
+endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI
 For checking the size of the set, list and map, these
 operational verbs can be used: sizeEQ, sizeNE, sizeLT,
 sizeLE, sizeGT, sizeGE
@@ -40,9 +40,9 @@ sizeLE, sizeGT, sizeGE
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations for rstring, set, list and map:
     contains, startsWith, endsWith, notContains, notStartsWith,
-    notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI,
-    notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT, sizeLE,
-    sizeGT, sizeGE
+    notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
+    notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
+    sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -100,12 +100,11 @@ So, I took a fresh approach to write this new eval_predicate function
 with my own ideas along with sufficient commentary to explain the logic.
 That obviously led to implementation and feature differences between
 the built-in evalPredicate and my new eval_predicate in this file.
-As this toolkit evolved from start to finish, it ended up with
-very good features needed to make it as a great rule processing
-engine within the IBM Streams product. If positioned properly,
-this can be a huge difference maker for IBM Streams in the
-competitive marketplace. It will also help customers and partners
-to create useful and powerful custom rule processors for many
+As this toolkit evolved, very good features got added to make it a
+great rule processing engine within the IBM Streams product.
+If positioned properly, this can be a difference maker for IBM Streams
+in the competitive marketplace. It will also help customers and partners
+in creating useful and powerful custom rule processors for many
 use cases in different business domains.
 ============================================================
 */
@@ -275,6 +274,12 @@ use cases in different business domains.
 #define INCOMPATIBLE_NOT_CONTAINS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 143
 #define INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 144
 #define INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 145
+#define INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE 146
+#define INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 147
+#define UNABLE_TO_PARSE_RHS_VALUE 148
+#define RHS_VALUE_WITH_MISSING_OPEN_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 149
+#define RHS_VALUE_WITH_MISSING_CLOSE_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 150
+#define INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB 151
 
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
@@ -284,14 +289,15 @@ namespace eval_predicate_functions {
 	using namespace SPL;
 
 	// ====================================================================
-	// This is the crucial data structure that holds different
+	// This is a crucial class definition that holds different
 	// subexpressions found in the user given expression string.
 	// It forms the basis for having a cache for the repeated
 	// evaluation of a given expression. The main idea here is to
 	// have a full evaluation plan made ready for use whenever
 	// needed. That will allow us to evaluate a given expression string
 	// using a readily available evaluation plan by executing its steps.
-	// In essence, it is a blueprint that defines the expression evaluation plan.
+	// This class definition is akin to a blueprint that contains all the
+	// details necessary to evaluate a given expression.
 	//
 	// Following is the class that represents the evaluation plan for a
 	// given expression. In this class, we store the data structures
@@ -304,7 +310,7 @@ namespace eval_predicate_functions {
 			~ExpressionEvaluationPlan() {
 			}
 
-			// Public getter methods.
+			// Public getter methods of this class.
 			rstring const & getExpression() {
 				return(expression);
 			}
@@ -329,7 +335,7 @@ namespace eval_predicate_functions {
 				return(interSubexpressionLogicalOperatorsList);
 			}
 
-			// Public setter methods.
+			// Public setter methods of this class.
 			void setExpression(rstring const & expr) {
 				expression = expr;
 			}
@@ -355,7 +361,7 @@ namespace eval_predicate_functions {
 			}
 
 		private:
-			// Private member variables.
+			// Private member variables of this class.
 			// The entire user given expression is stored in this variable.
 			rstring expression;
 
@@ -367,7 +373,7 @@ namespace eval_predicate_functions {
 			// subexpressions present in a fully validated expression.
 			// It is important to understand the structure of this map which
 			// is explained in great detail throughout this file.
-			// One such explanation is available around line 635 of this file.
+			// One such explanation is available around line 643 of this file.
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
 
 			// This list provides the subexpression map keys in sorted order.
@@ -434,6 +440,8 @@ namespace eval_predicate_functions {
     boolean isQuoteCharacterAtEndOfMapKeyString(blob const & myBlob, int32 const & idx);
     // Check if a given quote character marks the end of an RHS string.
     boolean isQuoteCharacterAtEndOfRhsString(blob const & myBlob, int32 const & idx);
+    // Check if a given ] character marks the end of an RHS list string literal.
+    boolean isCloseBracketAtEndOfRhsString(blob const & myBlob, int32 const & idx);
     // Get the constant value handle for a given attribute name in a given tuple.
     void getConstValueHandleForTupleAttribute(Tuple const & myTuple,
         rstring attributeName, ConstValueHandle & cvh);
@@ -2033,17 +2041,17 @@ namespace eval_predicate_functions {
     	// We support these logical operations: ||, &&
     	// We support these arithmetic operations: +, -, *, /, %
     	// Special operations:
-    	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith,
+    	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in,
         // containsCI, startsWithCI, endsWithCI, notContainsCI,
-        // notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT,
+        // notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
     	// sizeLE, sizeGT, sizeGE
     	// No bitwise operations are supported at this time.
 		rstring relationalAndArithmeticOperations =
 			rstring("==,!=,<=,<,>=,>,+,-,*,/,%,") +
 			rstring("containsCI,startsWithCI,endsWithCI,") +
-			rstring("notContainsCI,notStartsWithCI,notEndsWithCI,") +
+			rstring("notContainsCI,notStartsWithCI,notEndsWithCI,inCI,") +
 			rstring("contains,startsWith,endsWith,") +
-			rstring("notContains,notStartsWith,notEndsWith,") +
+			rstring("notContains,notStartsWith,notEndsWith,in,") +
 			rstring("sizeEQ,sizeNE,sizeLT,sizeLE,sizeGT,sizeGE");
     	SPL::list<rstring> relationalAndArithmeticOperationsList =
     		Functions::String::csvTokenize(relationalAndArithmeticOperations);
@@ -2655,7 +2663,8 @@ namespace eval_predicate_functions {
 								} else {
 									// A non-space or non-[ character found which is
 									// valid when the operation verb following this LHS is
-									// either contains or notContains or containsCI or notContainsCI or sizeXX.
+									// either contains or notContains or containsCI or
+									// notContainsCI or sizeXX.
 									// If not, it is not valid. We will do this check
 									// right after this while loop.
 									break;
@@ -2951,7 +2960,8 @@ namespace eval_predicate_functions {
 								} else {
 									// A non-space or non-[ character found which is
 									// valid when the following operation verb is
-									// either contains or notContains or containsCI or notContainsCI or sizeXX.
+									// either contains or notContains or containsCI or
+									// notContainsCI or sizeXX.
 									// If not, it is not valid. We will do this check
 									// right after this while loop.
 									break;
@@ -3347,8 +3357,8 @@ namespace eval_predicate_functions {
     		// ==, !=, <, <=, >, >=
         	// +, -, *, /, %
     		// contains, startsWith, endsWith, notContains, notStartsWith,
-    		// notEndsWith, containsCI, startsWithCI, endsWithCI, notContainsCI,
-    	    // notStartsWithCI, notEndsWithCI, sizeEQ, sizeNE, sizeLT,
+    		// notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
+    	    // notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
     		// sizeLE, sizeGT, sizeGE
     		// e-g:
     		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
@@ -3871,14 +3881,18 @@ namespace eval_predicate_functions {
 
     			// We will allow substring related operation verbs only for
     			// string based attributes in a non-set data type.
+    			// We will support in and inCI for string based LHS.
+    			// e-g: 'role in ["Developer", "Tester", "Admin", "Manager"]'
     			if(currentOperationVerb == "startsWith" ||
     				currentOperationVerb == "endsWith" ||
 					currentOperationVerb == "notStartsWith" ||
 					currentOperationVerb == "notEndsWith" ||
+					currentOperationVerb == "in" ||
 					currentOperationVerb == "startsWithCI" ||
 					currentOperationVerb == "endsWithCI" ||
 					currentOperationVerb == "notStartsWithCI" ||
-					currentOperationVerb == "notEndsWithCI") {
+					currentOperationVerb == "notEndsWithCI" ||
+					currentOperationVerb == "inCI") {
     				if(lhsAttribType != "rstring" &&
 						lhsAttribType != "list<rstring>" &&
 						lhsAttribType != "map<rstring,rstring>" &&
@@ -3895,14 +3909,18 @@ namespace eval_predicate_functions {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notEndsWith") {
     						error = INCOMPATIBLE_NOT_ENDS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "in") {
+    						error = INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "startsWithCI") {
     						error = INCOMPATIBLE_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "endsWithCI") {
     						error = INCOMPATIBLE_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notStartsWithCI") {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else {
+    					} else if(currentOperationVerb == "notEndsWithCI") {
     						error = INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else {
+    						error = INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					}
 
     					return(false);
@@ -3918,7 +3936,7 @@ namespace eval_predicate_functions {
     	    				return(false);
     	    			}
     				}
-    			} // End of validating starts, ends operator verbs.
+    			} // End of validating string based starts, ends operator verbs.
 
     			// Store the current operation verb in the subexpression layout list.
 				Functions::Collections::appendM(subexpressionLayoutList,
@@ -4307,6 +4325,8 @@ namespace eval_predicate_functions {
 		    		currentOperationVerb != "notContains" &&
 					currentOperationVerb != "containsCI" &&
 					currentOperationVerb != "notContainsCI" &&
+					currentOperationVerb != "in" &&
+					currentOperationVerb != "inCI" &&
 					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "rstring" ||
 					lhsAttribType == "set<rstring>" ||
@@ -4373,6 +4393,61 @@ namespace eval_predicate_functions {
 					}
 				} // End of if(lhsAttribType == "rstring" ...
 
+				// If the operation verb is in or inCI, then the RHS
+				// must follow this format.
+				// e-g: 'role in ["Developer", "Tester", "Admin", "Manager"]'
+				if(currentOperationVerb == "in" ||
+					currentOperationVerb == "inCI") {
+					// The necessary check to ensure that the in or inCI
+					// operation verb is only associated with a
+					// string based LHS was already done in the LHS validation stage above.
+					//
+					// In this case, RHS must start with [ and end with ].
+					// RHS can have any character from space to ~ i.e. character 20 t0 126.
+					// Very first character must be [.
+					boolean openBracketFound = false;
+					boolean closeBracketFound = false;
+
+					if(myBlob[idx] == '[') {
+						openBracketFound = true;
+						// Let us store it as part of the RHS value.
+						rhsValue += myBlob[idx];
+						// Move past the open bracket character.
+						idx++;
+					}
+
+					if(openBracketFound == false) {
+						error = RHS_VALUE_WITH_MISSING_OPEN_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB;
+						return(false);
+					}
+
+					// Stay in a loop and collect all the values until
+					// we see a close bracket.
+					while(idx < stringLength) {
+						// Do we have an RHS list literal end indicator i.e. a clost bracket?
+						if(isCloseBracketAtEndOfRhsString(myBlob, idx) == true) {
+							closeBracketFound = true;
+							// Let us store it as part of the RHS value.
+							rhsValue += myBlob[idx];
+							// Move past the close bracket character.
+							idx++;
+							break;
+						} else {
+							// We will keep collecting any other character including
+							// the open or close bracket that is
+							// embedded as part of the RHS list literal.
+							rhsValue += myBlob[idx];
+						}
+
+						idx++;
+					} // End of the inner while loop.
+
+					if(closeBracketFound == false) {
+						error = RHS_VALUE_WITH_MISSING_CLOSE_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB;
+						return(false);
+					}
+				} // End of processing RHS for in or inCI.
+
 				// If the operation verb is sizeXX, then the RHS
 				// must be an integer value without a sign.
 				if(currentOperationVerb == "sizeEQ" ||
@@ -4416,6 +4491,13 @@ namespace eval_predicate_functions {
 						return(false);
 					}
 				} // End of if(currentOperationVerb == "sizeEQ" ||
+
+				// If RHS value was not properly derived in the many
+				// different if conditional blocks above, we will return an error.
+				if(rhsValue == "") {
+					error = UNABLE_TO_PARSE_RHS_VALUE;
+					return(false);
+				}
 
     			// Store the current RHS value in the subexpression layout list.
 				Functions::Collections::appendM(subexpressionLayoutList, rhsValue);
@@ -7400,9 +7482,9 @@ namespace eval_predicate_functions {
 
 		// Allowed operations for rstring are these:
 		// ==, !=, contains, notContains, startsWith,
-		// notStartsWith, endsWith, notEndsWith,
+		// notStartsWith, endsWith, notEndsWith, in,
         // containsCI, startsWithCI, endsWithCI, notContainsCI,
-        // notStartsWithCI, notEndsWithCI, sizeXX
+        // notStartsWithCI, notEndsWithCI, inCI, sizeXX
 		if(operationVerb == "==") {
 			subexpressionEvalResult = (lhsValue == rhsValue) ? true : false;
 		} else if(operationVerb == "!=") {
@@ -7476,6 +7558,50 @@ namespace eval_predicate_functions {
 				} else {
 					subexpressionEvalResult = true;
 				}
+			}
+		} else if(operationVerb == "in" || operationVerb == "inCI") {
+			// In this case, RHS value is a list string literal.
+			// e-g: ["Developer", "Tester", "Admin", "Manager"]
+			// We must convert this to a SPL list and then
+			// do a membership test.
+			try {
+				// We can use spl_cast to convert a list string literal into
+				// an SPL list. As long as the string representation truly
+				// reflacts an SPL list syntax, this conversion will work.
+				// If not, it will throw an exception.
+				// I learned about this technique by looking at the
+				// auto generated C++ code for a similar conversion done in
+				// a SPL application logic.
+				const SPL::list<SPL::rstring > tokens =
+					SPL::spl_cast<SPL::list<SPL::rstring >, SPL::rstring >::cast(rhsValue);
+
+				if(operationVerb == "in") {
+					// This is a case sensitive list membership test.
+					subexpressionEvalResult =
+						Functions::Collections::has(tokens, lhsValue);
+				} else {
+					// This is a case insensitive list membership test.
+					// We will have to loop through every list element and
+					// compare it in a case insensitive manner.
+					subexpressionEvalResult = false;
+					int32 listSize = Functions::Collections::size(tokens);
+					rstring lhsValueLower = Functions::String::lower(lhsValue);
+
+					for(int32 i=0; i<listSize; i++) {
+						rstring rhsValueLower =
+							Functions::String::lower(tokens[i]);
+
+						if(Functions::String::findFirst(lhsValueLower, rhsValueLower) != -1) {
+							// There is a list membership match.
+							subexpressionEvalResult = true;
+							break;
+						}
+					}
+				}
+			} catch(...) {
+				// SPL type casting of a list string literal to SPL list failed.
+				subexpressionEvalResult = false;
+				error = INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB;
 			}
 		} else if(operationVerb == "containsCI") {
 			rstring lhsValueLower = Functions::String::lower(lhsValue);
@@ -8345,6 +8471,72 @@ namespace eval_predicate_functions {
 		// That means, the given quote character is the end of the RHS string.
 		return(true);
 	} // End of isQuoteCharacterAtEndOfRhsString
+
+	// This method checks to see if a close bracket ] character is
+	// embedded within a RHS list literal string or if it represents an
+	// end of an RHS list literal string. This method gets
+	// called from the validateExpression method.
+	inline boolean isCloseBracketAtEndOfRhsString(blob const & myBlob, int32 const & idx) {
+		// We will allow close bracket characters within a given
+		// RHS string. This method checks to see whether a given
+		// close bracket character appears before it is followed
+		// either by an end of the given expression string or by
+		// one of the logical operators.
+		int32 blobSize = Functions::Collections::size(myBlob);
+
+		if(idx >= blobSize) {
+			// Given idx falls outside the blob.
+			return(false);
+		}
+
+		if(myBlob[idx] != ']') {
+			// Given idx position doesn't hold a close bracket character.
+			return(false);
+		}
+
+		// Let us check if the next non-space character leads us to
+		// a logical operator i.e. && or ||.
+		for(int32 i=idx+1; i<blobSize; i++) {
+			// If we encounter another close bracket character, then the
+			// current ] character from where this method is
+			// being called is not at the end of the given RHS string.
+			if(myBlob[i] == ']') {
+				return(false);
+			}
+
+			// Let us now check for the character sequence "&& ".
+			if(myBlob[i] == '&') {
+				// The close bracket character is followed by a & character.
+				// In that case, let us check if the next character in the
+				// sequence is another & followed by a space.
+				if(i < blobSize-2 && myBlob[i+1] == '&' &&
+					myBlob[i+2] == ' ') {
+					// This must be a close bracket character in
+					// the given RHS list string literal.
+					return(true);
+				}
+			}
+
+			// Let us now check for the character sequence "|| ".
+			if(myBlob[i] == '|') {
+				// The close bracket character is followed by a | character.
+				// In that case, let us check if the next character in the
+				// sequence is another | followed by a space.
+				if(i < blobSize-2 && myBlob[i+1] == '|' &&
+					myBlob[i+2] == ' ') {
+					// This must be a close bracket character in
+					// the given RHS list string literal.
+					return(true);
+				}
+			}
+
+			// Continue the loop.
+		} // End of for loop.
+
+		// We reached the end of the expression string.
+		// That means, the given close bracket character is the end of the RHS string.
+		return(true);
+	} // End of isCloseBracketAtEndOfRhsString
 
 	// This function fetches the value of a user given
 	// attribute present in a user given tuple. This function can be
@@ -10207,34 +10399,33 @@ namespace eval_predicate_functions {
 } // End of namespace eval_predicate_functions
 // ====================================================================
 
-#endif
-
 /*
-==================================================================
+===============================================================================
 Coda
 ----
-Whatever lies ahead for IBM Streams beyond June/2021, I'm proud to
-have played a key role in this product team from 2007 to 2021.
-IBM Streams gave me so many marvelous opportunities to create
-amazing extensions, build cutting edge streaming analytics solutions,
-coach/train top notch customers and co-create meaningful
-production-ready software assets for such customers. It formed the
-best period in my 36 years of Software career thus far. I'm lucky to
-get a chance to build this toolkit as my final official project for
-IBM Streams. That too for meeting a critical business need of a
-prestigious customer in the semiconductor manufacturing industry.
-This particular toolkit is technically challenging and
-super interesting. I'm glad that it serves as a bookend for my
-technical contributions to the incomparable IBM Streams. I'm hopeful
-that I will get another chance to associate with this wonderful
-product as it finds a new home soon either inside or outside of IBM.
-Until then, I will continue to reminisce this unforgettable journey
-made possible by passionate researchers, engineers and managers who
-are all simply world class in their talent and camaraderie.
+Whatever lies ahead for IBM Streams beyond 2Q2021, I'm proud to have
+played a key role in this product team from 2007 to 2021. IBM Streams
+gave me marvelous opportunities to create beautiful extensions, build
+cutting edge streaming analytics solutions, coach/train top notch customers
+and co-create meaningful production-ready software assets with them. Thus far,
+it formed the best period in my 36 years of Software career. I'm lucky to
+get a chance to build this challenging Rule Processing toolkit for meeting a
+critical business need of a prestigious customer in the semiconductor industry.
+Most likely, it is the last hurrah in my technical contributions to the
+incomparable IBM Streams. I will be thrilled to get another chance to
+associate with this wonderful product if it finds a new home either inside or
+outside of IBM. Until then, I will continue to reminisce this unforgettable
+journey made possible by the passionate researchers, engineers and managers
+who are all simply world class much like IBM Streams.
 
-Long live IBM Streams.
+It will take many more years for some other company or an open-source group to
+roll out a full-featured product that can be a true match for IBM Streams.
+
+***** Let the pioneering concepts of IBM Streams shine forever. *****
 
 Yours truly,
-SN
-==================================================================
+SN (June 2021)
+===============================================================================
 */
+
+#endif
