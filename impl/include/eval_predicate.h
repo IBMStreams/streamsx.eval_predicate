@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: June/01/2021
+Last modified on: June/07/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -3881,18 +3881,14 @@ namespace eval_predicate_functions {
 
     			// We will allow substring related operation verbs only for
     			// string based attributes in a non-set data type.
-    			// We will support in and inCI for string based LHS.
-    			// e-g: 'role in ["Developer", "Tester", "Admin", "Manager"]'
     			if(currentOperationVerb == "startsWith" ||
     				currentOperationVerb == "endsWith" ||
 					currentOperationVerb == "notStartsWith" ||
 					currentOperationVerb == "notEndsWith" ||
-					currentOperationVerb == "in" ||
 					currentOperationVerb == "startsWithCI" ||
 					currentOperationVerb == "endsWithCI" ||
 					currentOperationVerb == "notStartsWithCI" ||
-					currentOperationVerb == "notEndsWithCI" ||
-					currentOperationVerb == "inCI") {
+					currentOperationVerb == "notEndsWithCI") {
     				if(lhsAttribType != "rstring" &&
 						lhsAttribType != "list<rstring>" &&
 						lhsAttribType != "map<rstring,rstring>" &&
@@ -3909,18 +3905,14 @@ namespace eval_predicate_functions {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notEndsWith") {
     						error = INCOMPATIBLE_NOT_ENDS_WITH_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else if(currentOperationVerb == "in") {
-    						error = INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "startsWithCI") {
     						error = INCOMPATIBLE_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "endsWithCI") {
     						error = INCOMPATIBLE_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notStartsWithCI") {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else if(currentOperationVerb == "notEndsWithCI") {
-    						error = INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else {
-    						error = INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    						error = INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					}
 
     					return(false);
@@ -3937,6 +3929,67 @@ namespace eval_predicate_functions {
     	    			}
     				}
     			} // End of validating string based starts, ends operator verbs.
+
+    			// We will allow membership evaluation in a list string literal via
+    			// in and inCI operation verbs. We will support this for
+    			// any LHS tuple attribute that is of type int32, float64 and rstring.
+    			// e-g: [1, 2, 3, 4]
+    			// [1.4, 5.3, 98.65, 7.2]
+    			// ["Developer", "Tester", "Admin", "Manager"]
+    			if(currentOperationVerb == "in") {
+    				// We will allow 'in' verb for int32, float64 and rstring LHS attributes.
+    				if(lhsAttribType != "rstring" &&
+						lhsAttribType != "list<rstring>" &&
+						lhsAttribType != "map<rstring,rstring>" &&
+						lhsAttribType != "map<int32,rstring>" &&
+						lhsAttribType != "map<int64,rstring>" &&
+						lhsAttribType != "map<float32,rstring>" &&
+						lhsAttribType != "map<float64,rstring>" &&
+						lhsAttribType != "int32" &&
+						lhsAttribType != "float64") {
+    					// This operator verb is not allowed for a given LHS attribute type.
+    					error = INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					return(false);
+    				} else {
+    	    			// We have a compatible operation verb for a given LHS attribute type.
+    	    			// Move the idx past the current operation verb.
+    	    			idx += Functions::String::length(currentOperationVerb);
+
+    	    			// Special operation verbs such as in must be
+    	    			// followed by a space character.
+    	    			if(idx < stringLength && myBlob[idx] != ' ') {
+    	    				error = SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB;
+    	    				return(false);
+    	    			}
+    				}
+    			} // End of validating in operator verb.
+
+    			if(currentOperationVerb == "inCI") {
+    				// We will allow 'inCI' verb only for rstring.
+    				// Because, case insensitivity makes sense only for rstring.
+    				if(lhsAttribType != "rstring" &&
+						lhsAttribType != "list<rstring>" &&
+						lhsAttribType != "map<rstring,rstring>" &&
+						lhsAttribType != "map<int32,rstring>" &&
+						lhsAttribType != "map<int64,rstring>" &&
+						lhsAttribType != "map<float32,rstring>" &&
+						lhsAttribType != "map<float64,rstring>") {
+    					// This operator verb is not allowed for a given LHS attribute type.
+    					error = INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					return(false);
+    				} else {
+    	    			// We have a compatible operation verb for a given LHS attribute type.
+    	    			// Move the idx past the current operation verb.
+    	    			idx += Functions::String::length(currentOperationVerb);
+
+    	    			// Special operation verbs such as inCI must be
+    	    			// followed by a space character.
+    	    			if(idx < stringLength && myBlob[idx] != ' ') {
+    	    				error = SPACE_NOT_FOUND_AFTER_SPECIAL_OPERATION_VERB;
+    	    				return(false);
+    	    			}
+    				}
+    			} // End of validating inCI operator verb.
 
     			// Store the current operation verb in the subexpression layout list.
 				Functions::Collections::appendM(subexpressionLayoutList,
@@ -4050,6 +4103,7 @@ namespace eval_predicate_functions {
 	    			currentOperationVerb != "notContains" &&
 					currentOperationVerb != "containsCI" &&
 					currentOperationVerb != "notContainsCI" &&
+					currentOperationVerb != "in" &&
 	    			Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "int32" ||
 					lhsAttribType == "uint32" || lhsAttribType == "int64" ||
@@ -4184,6 +4238,7 @@ namespace eval_predicate_functions {
 		    		currentOperationVerb != "notContains" &&
 					currentOperationVerb != "containsCI" &&
 					currentOperationVerb != "notContainsCI" &&
+					currentOperationVerb != "in" &&
 					Functions::String::findFirst(currentOperationVerb, "size") != 0) &&
 					(lhsAttribType == "float32" ||
 					lhsAttribType == "float64" ||
@@ -4394,13 +4449,15 @@ namespace eval_predicate_functions {
 				} // End of if(lhsAttribType == "rstring" ...
 
 				// If the operation verb is in or inCI, then the RHS
-				// must follow this format.
-				// e-g: 'role in ["Developer", "Tester", "Admin", "Manager"]'
+				// must follow a list string literal format.
+				// e-g: [1, 2, 3, 4]
+				// [1.4, 5.3, 98.65, 7.2]
+				// ["Developer", "Tester", "Admin", "Manager"]
 				if(currentOperationVerb == "in" ||
 					currentOperationVerb == "inCI") {
 					// The necessary check to ensure that the in or inCI
-					// operation verb is only associated with a
-					// string based LHS was already done in the LHS validation stage above.
+					// operation verb is only associated with a int32, float64 and
+					// rstring based LHS was already done in the LHS validation stage above.
 					//
 					// In this case, RHS must start with [ and end with ].
 					// RHS can have any character from space to ~ i.e. character 20 t0 126.
@@ -5402,6 +5459,48 @@ namespace eval_predicate_functions {
     				rstring const & lhsValue = myMap.at(listIndexOrMapKeyValue);
     				performRStringEvalOperations(lhsValue, rhsValue,
     					operationVerb, subexpressionEvalResult, error);
+        		// ****** in membership evaluation for int32 LHS attributes ******
+    			} else if(operationVerb == "in" && lhsAttributeType == "int32") {
+        			int32 const & myLhsValue = cvh;
+
+        			try {
+        				// We can use spl_cast to convert a list string literal into
+        				// an SPL list. As long as the string representation truly
+        				// reflects an SPL list syntax, this conversion will work.
+        				// If not, it will throw an exception.
+        				// I learned about this technique by looking at the
+        				// auto generated C++ code for a similar conversion done in
+        				// a SPL application logic.
+        				const SPL::list<SPL::int32> tokens =
+        					SPL::spl_cast<SPL::list<SPL::int32>, SPL::rstring>::cast(rhsValue);
+        				subexpressionEvalResult =
+        					Functions::Collections::has(tokens, myLhsValue);
+        			} catch(...) {
+        				// SPL type casting of a list string literal to SPL list failed.
+        				subexpressionEvalResult = false;
+        				error = INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB;
+        			}
+            	// ****** in membership evaluation for float64 LHS attributes ******
+				} else if(operationVerb == "in" && lhsAttributeType == "float64") {
+					float64 const & myLhsValue = cvh;
+
+        			try {
+        				// We can use spl_cast to convert a list string literal into
+        				// an SPL list. As long as the string representation truly
+        				// reflects an SPL list syntax, this conversion will work.
+        				// If not, it will throw an exception.
+        				// I learned about this technique by looking at the
+        				// auto generated C++ code for a similar conversion done in
+        				// a SPL application logic.
+        				const SPL::list<SPL::float64> tokens =
+        					SPL::spl_cast<SPL::list<SPL::float64>, SPL::rstring>::cast(rhsValue);
+        				subexpressionEvalResult =
+        					Functions::Collections::has(tokens, myLhsValue);
+        			} catch(...) {
+        				// SPL type casting of a list string literal to SPL list failed.
+        				subexpressionEvalResult = false;
+        				error = INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB;
+        			}
     			// ****** Collection size check (OR) Collection item existence evaluations ******
     			} else if(lhsAttributeType == "set<int32>") {
     				SPL::set<int32> const & mySet = cvh;
@@ -7561,19 +7660,22 @@ namespace eval_predicate_functions {
 			}
 		} else if(operationVerb == "in" || operationVerb == "inCI") {
 			// In this case, RHS value is a list string literal.
-			// e-g: ["Developer", "Tester", "Admin", "Manager"]
+			// e-g: [1, 2, 3, 4]
+			// [1.4, 5.3, 98.65, 7.2]
+			// ["Developer", "Tester", "Admin", "Manager"]
+			//
 			// We must convert this to a SPL list and then
 			// do a membership test.
 			try {
 				// We can use spl_cast to convert a list string literal into
 				// an SPL list. As long as the string representation truly
-				// reflacts an SPL list syntax, this conversion will work.
+				// reflects an SPL list syntax, this conversion will work.
 				// If not, it will throw an exception.
 				// I learned about this technique by looking at the
 				// auto generated C++ code for a similar conversion done in
 				// a SPL application logic.
-				const SPL::list<SPL::rstring > tokens =
-					SPL::spl_cast<SPL::list<SPL::rstring >, SPL::rstring >::cast(rhsValue);
+				const SPL::list<SPL::rstring> tokens =
+					SPL::spl_cast<SPL::list<SPL::rstring>, SPL::rstring>::cast(rhsValue);
 
 				if(operationVerb == "in") {
 					// This is a case sensitive list membership test.
@@ -10403,20 +10505,19 @@ namespace eval_predicate_functions {
 ===============================================================================
 Coda
 ----
-Whatever lies ahead for IBM Streams beyond 2Q2021, I'm proud to have
+Whatever path lies ahead for IBM Streams beyond 2Q2021, I'm proud to have
 played a key role in this product team from 2007 to 2021. IBM Streams
 gave me marvelous opportunities to create beautiful extensions, build
 cutting edge streaming analytics solutions, coach/train top notch customers
-and co-create meaningful production-ready software assets with them. Thus far,
-it formed the best period in my 36 years of Software career. I'm lucky to
-get a chance to build this challenging Rule Processing toolkit for meeting a
-critical business need of a prestigious customer in the semiconductor industry.
-Most likely, it is the last hurrah in my technical contributions to the
-incomparable IBM Streams. I will be thrilled to get another chance to
-associate with this wonderful product if it finds a new home either inside or
-outside of IBM. Until then, I will continue to reminisce this unforgettable
-journey made possible by the passionate researchers, engineers and managers
-who are all simply world class much like IBM Streams.
+and co-create meaningful production-grade software assets with them. Thus far,
+it formed the best period in my 36 years of Software career. I created
+this challenging Rule Processing toolkit for meeting a critical business need
+of a prestigious customer in the semiconductor industry. Most likely, it is the
+last hurrah in my technical contributions to the incomparable IBM Streams.
+I will be thrilled to get another chance to associate with this wonderful
+product if it finds a new home either inside or outside of IBM. Until then,
+I will continue to reminisce this unforgettable journey made possible by the
+passionate researchers, engineers and managers who are all simply world class.
 
 It will take many more years for some other company or an open-source group to
 roll out a full-featured product that can be a true match for IBM Streams.

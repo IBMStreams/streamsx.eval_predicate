@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: June/01/2021
+Last modified on: June/07/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -6768,11 +6768,13 @@ composite FunctionalTests {
 					}
 					// -------------------------
 					
-					// A54.1 (Use of in for membership test.)
+					// A54.1 (Use of in for rstring membership test.)
 					// It does case sensitive membership test using a list literal string.
-					type Role_t = rstring role, int32 x, float64 y;
+					type Role_t = rstring role, int32 age, float64 salary;
 					mutable Role_t myRole = {};
 					myRole.role = "Admin";
+					myRole.age = 56;
+					myRole.salary = 10514.00; 
 
 					_rule = 'role in ["Developer", "Tester", "Admin", "Manager"]';
 					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
@@ -6785,11 +6787,10 @@ composite FunctionalTests {
 						printStringLn("Testcase A54.1: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
-					// A54.2 (Use of inCI for membership test.)
+					// A54.2 (Use of inCI for rstring membership test.)
 					// It does case insensitive membership test using a list literal string.
 					myRole.role = "mAnAgEr";
 					_rule = 'role inCI ["Developer", "Tester", "Admin", "Manager"]';
-
 					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -6798,6 +6799,58 @@ composite FunctionalTests {
 						printStringLn("Testcase A54.2: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A54.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A54.3 (Use of in for int32 membership test.)
+					// It does membership test using a list literal string.
+					_rule = 'age in [22, 40, 43, 50, 56, 65]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A54.4 (Use of in for float64 membership test.)
+					// It does membership test using a list literal string.
+					_rule = 'salary in [68326.45, 92821.87, 10514.00, 120529,32]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.4: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A54.5 (Use of in for int32 membership test.)
+					// It does membership test using a list literal string.
+					_rule = 'age in [22, 40, 43, 50, 58, 65]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.5: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.5: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.5: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A54.6 (Use of in for float64 membership test.)
+					// It does membership test using a list literal string.
+					_rule = 'salary in [68326.45, 92821.87, 10594.76, 120529,32]';
+					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A54.6: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A54.6: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A54.6: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 				} // End of onTuple MTD.
@@ -8108,10 +8161,11 @@ composite FunctionalTests {
 					// -------------------------
 					
 					// B82.1 (INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE 146)
-					type Role2_t = rstring role, int32 x, float64 y;
+					type Role2_t = rstring role, int32 x, float32 y;
 					mutable Role2_t myRole = {};
 					myRole.role = "Tester";
-					_rule = 'x in ["Developer", "Tester", "Admin", "Manager"]';
+					
+					_rule = 'y in [1.1, 2.2, 3.3, 4.4, 5.5]';
 					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -8123,7 +8177,7 @@ composite FunctionalTests {
 					}
 
 					// B82.2 (INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 147)
-					_rule = 'x inCI ["Developer", "Tester", "Admin", "Manager"]';
+					_rule = 'x inCI [1, 2, 3, 4, 5]';
 					result = eval_predicate(_rule, myRole, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {

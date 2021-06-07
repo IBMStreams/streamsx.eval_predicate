@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: June/01/2021
+Last modified on: June/07/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -859,13 +859,15 @@ composite EvalPredicateExample {
 					}
 					
 					// ============== TESTCASE GROUP 5 ============== 	
-					type Role_t = rstring role, int32 x, float64 y;
+					type Role_t = rstring role, int32 age, float64 salary;
 					mutable Role_t myRole = {};
 					myRole.role = "Admin";
+					myRole.age = 56;
+					myRole.salary = 10514.00; 
 					
 					//					
 					// 5.1
-					// Usage of in 
+					// Usage of in for an rstring tuple attribute
 					// It does case sensitive membership test using a list literal string.
 					rule = 'role in ["Developer", "Tester", "Admin", "Manager"]';
 					result = eval_predicate(rule, myRole, error, $EVAL_PREDICATE_TRACING);
@@ -880,7 +882,7 @@ composite EvalPredicateExample {
 
 					//					
 					// 5.2
-					// Usage of inCI
+					// Usage of inCI for an rstring tuple attribute
 					// It does case insensitive membership test using a list literal string.
 					myRole.role = "mAnAgEr";
 					rule = 'role inCI ["Developer", "Tester", "Admin", "Manager"]';
@@ -892,6 +894,36 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 5.2: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase 5.2: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					//	
+					// 5.3
+					// Usage of in for an int32 tuple attribute
+					// It does membership test using a list literal string.
+					rule = 'age in [22, 40, 43, 50, 56, 65]';
+					result = eval_predicate(rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 5.3: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 5.3: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 5.3: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					//	
+					// 5.4
+					// Usage of in for a float64 tuple attribute
+					// It does membership test using a list literal string.
+					rule = 'salary in [68326.45, 92821.87, 10514.00, 120529,32]';
+					result = eval_predicate(rule, myRole, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase 5.4: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase 5.4: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase 5.4: Evaluation execution failed. Error=" + (rstring)error);
 					}
 				} // End of onTuple S
 		} // End of the Custom operator.
