@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: June/07/2021
+Last modified on: Sep/03/2021
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -29,7 +29,8 @@ given expression (rule) to have operational verbs such as
 contains, startsWith, endsWith, notContains, notStartsWith,
 notEndsWith, in. For case insensitive (CI) string operations, these
 operational verbs can be used: containsCI, startsWithCI,
-endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI
+endsWithCI, inCI, equalsCI, notContainsCI, notStartsWithCI,
+notEndsWithCI, notEqualsCI.
 For checking the size of the set, list and map, these
 operational verbs can be used: sizeEQ, sizeNE, sizeLT,
 sizeLE, sizeGT, sizeGE
@@ -40,9 +41,10 @@ sizeLE, sizeGT, sizeGE
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations for rstring, set, list and map:
     contains, startsWith, endsWith, notContains, notStartsWith,
-    notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
-    notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
-    sizeLE, sizeGT, sizeGE
+    notEndsWith, in, containsCI, startsWithCI, endsWithCI,
+    inCI, equalsCI, notContainsCI, notStartsWithCI,
+    notEndsWithCI, notEqualsCI,
+    sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
@@ -276,11 +278,12 @@ use cases in different business domains.
 #define INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 145
 #define INCOMPATIBLE_IN_OPERATION_FOR_LHS_ATTRIB_TYPE 146
 #define INCOMPATIBLE_IN_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 147
-#define UNABLE_TO_PARSE_RHS_VALUE 148
-#define RHS_VALUE_WITH_MISSING_OPEN_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 149
-#define RHS_VALUE_WITH_MISSING_CLOSE_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 150
-#define INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB 151
-
+#define INCOMPATIBLE_EQUALS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 148
+#define INCOMPATIBLE_NOT_EQUALS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE 149
+#define UNABLE_TO_PARSE_RHS_VALUE 150
+#define RHS_VALUE_WITH_MISSING_OPEN_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 151
+#define RHS_VALUE_WITH_MISSING_CLOSE_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 152
+#define INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB 153
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
 namespace eval_predicate_functions {
@@ -2042,14 +2045,14 @@ namespace eval_predicate_functions {
     	// We support these arithmetic operations: +, -, *, /, %
     	// Special operations:
     	// contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in,
-        // containsCI, startsWithCI, endsWithCI, notContainsCI,
-        // notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
-    	// sizeLE, sizeGT, sizeGE
+        // containsCI, startsWithCI, endsWithCI, inCI, equalsCI,
+    	// notContainsCI, notStartsWithCI, notEndsWithCI, notEqualsCI,
+    	// sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
     	// No bitwise operations are supported at this time.
 		rstring relationalAndArithmeticOperations =
 			rstring("==,!=,<=,<,>=,>,+,-,*,/,%,") +
-			rstring("containsCI,startsWithCI,endsWithCI,") +
-			rstring("notContainsCI,notStartsWithCI,notEndsWithCI,inCI,") +
+			rstring("containsCI,startsWithCI,endsWithCI,inCI,equalsCI,") +
+			rstring("notContainsCI,notStartsWithCI,notEndsWithCI,notEqualsCI,") +
 			rstring("contains,startsWith,endsWith,") +
 			rstring("notContains,notStartsWith,notEndsWith,in,") +
 			rstring("sizeEQ,sizeNE,sizeLT,sizeLE,sizeGT,sizeGE");
@@ -3357,9 +3360,9 @@ namespace eval_predicate_functions {
     		// ==, !=, <, <=, >, >=
         	// +, -, *, /, %
     		// contains, startsWith, endsWith, notContains, notStartsWith,
-    		// notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
-    	    // notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT,
-    		// sizeLE, sizeGT, sizeGE
+    		// notEndsWith, in, containsCI, startsWithCI, endsWithCI, inCI, equalsCI,
+    		// notContainsCI, notStartsWithCI, notEndsWithCI, notEqualsCI,
+    		// sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
     		// e-g:
     		// a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3
     		// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
@@ -3887,8 +3890,10 @@ namespace eval_predicate_functions {
 					currentOperationVerb == "notEndsWith" ||
 					currentOperationVerb == "startsWithCI" ||
 					currentOperationVerb == "endsWithCI" ||
+					currentOperationVerb == "equalsCI" ||
 					currentOperationVerb == "notStartsWithCI" ||
-					currentOperationVerb == "notEndsWithCI") {
+					currentOperationVerb == "notEndsWithCI" ||
+					currentOperationVerb == "notEqualsCI") {
     				if(lhsAttribType != "rstring" &&
 						lhsAttribType != "list<rstring>" &&
 						lhsAttribType != "map<rstring,rstring>" &&
@@ -3909,10 +3914,14 @@ namespace eval_predicate_functions {
     						error = INCOMPATIBLE_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "endsWithCI") {
     						error = INCOMPATIBLE_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else if(currentOperationVerb == "equalsCI") {
+    						error = INCOMPATIBLE_EQUALS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					} else if(currentOperationVerb == "notStartsWithCI") {
     						error = INCOMPATIBLE_NOT_STARTS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
-    					} else {
+    					} else if(currentOperationVerb == "notEndsWithCI") {
     						error = INCOMPATIBLE_NOT_ENDS_WITH_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
+    					} else {
+    						error = INCOMPATIBLE_NOT_EQUALS_CI_OPERATION_FOR_LHS_ATTRIB_TYPE;
     					}
 
     					return(false);
@@ -7582,8 +7591,8 @@ namespace eval_predicate_functions {
 		// Allowed operations for rstring are these:
 		// ==, !=, contains, notContains, startsWith,
 		// notStartsWith, endsWith, notEndsWith, in,
-        // containsCI, startsWithCI, endsWithCI, notContainsCI,
-        // notStartsWithCI, notEndsWithCI, inCI, sizeXX
+        // containsCI, startsWithCI, endsWithCI, inCI, equalsCI,
+    	// notContainsCI, notStartsWithCI, notEndsWithCI, notEqualsCI, sizeXX
 		if(operationVerb == "==") {
 			subexpressionEvalResult = (lhsValue == rhsValue) ? true : false;
 		} else if(operationVerb == "!=") {
@@ -7791,6 +7800,14 @@ namespace eval_predicate_functions {
 					subexpressionEvalResult = true;
 				}
 			}
+		} else if(operationVerb == "equalsCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+			subexpressionEvalResult = (lhsValueLower == rhsValueLower) ? true : false;
+		} else if(operationVerb == "notEqualsCI") {
+			rstring lhsValueLower = Functions::String::lower(lhsValue);
+			rstring rhsValueLower = Functions::String::lower(rhsValue);
+			subexpressionEvalResult = (lhsValueLower != rhsValueLower) ? true : false;
 		} else if(operationVerb == "sizeEQ") {
 			subexpressionEvalResult = false;
 			int32 lhsSize = Functions::String::length(lhsValue);
@@ -10508,16 +10525,17 @@ Coda
 Whatever path lies ahead for IBM Streams beyond 2Q2021, I'm proud to have
 played a key role in this product team from 2007 to 2021. IBM Streams
 gave me marvelous opportunities to create beautiful extensions, build
-cutting edge streaming analytics solutions, coach/train top notch customers
+cutting edge streaming analytics solutions, coach/train top-notch customers
 and co-create meaningful production-grade software assets with them. Thus far,
 it formed the best period in my 36 years of Software career. I created
 this challenging Rule Processing toolkit for meeting a critical business need
 of a prestigious customer in the semiconductor industry. Most likely, it is the
 last hurrah in my technical contributions to the incomparable IBM Streams.
 I will be thrilled to get another chance to associate with this wonderful
-product if it finds a new home either inside or outside of IBM. Until then,
-I will continue to reminisce this unforgettable journey made possible by the
-passionate researchers, engineers and managers who are all simply world class.
+product if it finds a new home for further development either inside or
+outside of IBM. Until then, I will continue to reminisce this unforgettable
+journey made possible by the passionate researchers, engineers and managers
+who are all simply world class.
 
 It will take many more years for some other company or an open-source group to
 roll out a full-featured product that can be a true match for IBM Streams.

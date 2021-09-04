@@ -1,5 +1,9 @@
 # Changes
 
+## v1.1.1
+* Sep/04/2021
+* Added two new operational verbs: equalsCI and notEqualsCI.
+
 ## v1.1.0
 * June/07/2021
 * Modified it to support the in operational verb for int32, float64 and rstring based tuple attributes and the inCI operational verb only for rstring based tuple attributes.

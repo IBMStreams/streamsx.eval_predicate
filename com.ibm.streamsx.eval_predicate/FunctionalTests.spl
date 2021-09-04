@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: June/07/2021
+Last modified on: Sep/04/2021
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -1336,9 +1336,9 @@ composite FunctionalTests {
 						printStringLn("Testcase A8.15: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
-					// A8.16 (rstring notContainsCI operation verb)
-					_rule = "(symbol notContainsCI 'intc')";
-					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					// A8.16 (rstring equalsCI operation verb)
+					_rule = "(a.transport.plane.airliner equalsCI 'bOeInG')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
 						printStringLn("Testcase A8.16: Evaluation criteria is met.");
@@ -1348,8 +1348,8 @@ composite FunctionalTests {
 						printStringLn("Testcase A8.16: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
-					// A8.17 (rstring notStartsWithCI operation verb)
-					_rule = "(symbol notStartsWithCI 'iB')";
+					// A8.17 (rstring notContainsCI operation verb)
+					_rule = "(symbol notContainsCI 'intc')";
 					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -1360,8 +1360,8 @@ composite FunctionalTests {
 						printStringLn("Testcase A8.17: Evaluation execution failed. Error=" + (rstring)error);
 					}
 
-					// A8.18 (rstring notEndsWithCI operation verb)
-					_rule = "(symbol notEndsWithCI 'Bm')";
+					// A8.18 (rstring notStartsWithCI operation verb)
+					_rule = "(symbol notStartsWithCI 'iB')";
 					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
 					
 					if(result == true) {
@@ -1370,7 +1370,31 @@ composite FunctionalTests {
 						printStringLn("Testcase A8.18: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A8.18: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A8.19 (rstring notEndsWithCI operation verb)
+					_rule = "(symbol notEndsWithCI 'Bm')";
+					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.19: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.19: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.19: Evaluation execution failed. Error=" + (rstring)error);
 					}					
+					
+					// A8.20 (rstring equalsCI operation verb)
+					_rule = "(a.transport.plane.airliner notEqualsCI 'bOeInK')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A8.20: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A8.20: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A8.20: Evaluation execution failed. Error=" + (rstring)error);
+					}
 					// -------------------------
 
 					// A9.1 (rstring contains operation verb)

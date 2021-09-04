@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: June/07/2021
+Last modified on: Sep/04/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -38,7 +38,8 @@ given expression (rule) to have operational verbs such as
 contains, startsWith, endsWith, notContains, notStartsWith,
 notEndsWith, in. For case insensitive (CI) string operations, these
 operational verbs can be used: containsCI, startsWithCI,
-endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI
+endsWithCI, inCI, equalsCI, notContainsCI, notStartsWithCI,
+notEndsWithCI, notEqualsCI.
 For checking the size of the set, list and map, these
 operational verbs can be used: sizeEQ, sizeNE, sizeLT,
 sizeLE, sizeGT, sizeGE
@@ -49,9 +50,9 @@ sizeLE, sizeGT, sizeGE
 --> It supports these arithmetic operations: +, -, *, /, %
 --> It supports these special operations for rstring, set, list and map:
     contains, startsWith, endsWith, notContains, notStartsWith, 
-    notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI,
-    notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, 
-    sizeLE, sizeGT, sizeGE
+    notEndsWith, in, containsCI, startsWithCI, endsWithCI, inCI, equalsCI, 
+    notContainsCI, notStartsWithCI, notEndsWithCI, notEqualsCI,
+    sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 --> No bitwise operations are supported at this time.
 
 5) Following are the data types currently allowed in an expression (rule).
