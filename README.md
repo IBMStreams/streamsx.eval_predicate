@@ -106,6 +106,78 @@ if(error == 0) {
 // It is a void function that returns nothing.
 ```
 
+**compare_tuple_attributes** is another C++ native function provided via this toolkit. This function compares the attribute values of two tuples that are based on the same schema. It will give back a list containing attribute names that have differing values in the two tuples being compared. It supports primitive types (int32, float64, rstring etc.) as well as collection types (set, list and map). It also allows flat tuples as well as deeply nested tuples to be compared.
+
+```
+// This namespace usage declaration is needed at the top of an application.
+use com.ibm.streamsx.eval_predicate::*;
+
+// Schema can include other deeply nested types.
+type NestedType1_t = int32 x, float64 y, rstring z, list<int32> l;
+type NestedType2_t = NestedType1_t m, map<int32, boolean> n, timestamp o;
+type Test_t = boolean a, int32 b, uint64 c, float32 d, float64 e,
+              rstring f, set<int32> g, list<rstring> h, map<int32, rstring> i,
+              map<rstring, float64> j, NestedType2_t k;
+					
+// Create two tuples that are based on the same schema.
+mutable Test_t myTuple1 = {};
+mutable Test_t myTuple2 = {};
+mutable list<rstring> differingAttributes = [];
+					
+// Populate the tuple with some data.
+myTuple1.a = true;
+myTuple1.b = 456;
+myTuple1.c = 789ul;
+myTuple1.d = (float32)123.45;
+myTuple1.e = 987.65;
+myTuple1.f = "Life is mainly there to have fun.";
+myTuple1.g = {5, 9, 2, 6};
+myTuple1.h = ['One', 'Two', 'Three'];
+myTuple1.i = {1:'One', 2:'Two', 3:'Three'};
+myTuple1.j = {"One":1.0, "Two":2.0, "Three":3.0};
+myTuple1.k.m.x = 678;
+myTuple1.k.m.y = 936.27;
+myTuple1.k.m.z = "String inside a nested tuple.";
+myTuple1.k.m.l = [67, 78, 89];
+myTuple1.k.n = {1:true, 2:false, 3:true}; 
+myTuple1.k.o = getTimestamp();
+						
+// Make the second tuple same as the first tuple.
+myTuple2 = myTuple1;
+// Make some changes to certain attribute values in the second tuple.
+myTuple2.a = false;
+myTuple2.d = (float32)145.12;
+myTuple2.f = "Life is mainly there to have joy and peace.";
+myTuple2.i = {10:'Ten', 9:'Nine', 8:'Eight'};
+myTuple2.k.m.y = 27.93;
+myTuple2.k.m.z = "Different string inside a nested tuple.";
+myTuple2.k.n = {1:true, 2:true, 3:true};
+// Wait for 2 seconds for time to change.
+block(2.0);
+myTuple2.k.o = getTimestamp(); 
+					
+// Compare them now.
+compare_tuple_attributes(myTuple1, myTuple2, differingAttributes, 
+                         error, $EVAL_PREDICATE_TRACING);
+	    			
+if(error == 0) {
+   printStringLn("Compare tuple attributes function returned successfully. " +
+      "differingAttributes = " + (rstring)differingAttributes);
+} else {
+   printStringLn("Compare tuple attributes function returned an error. Error=" + (rstring)error);
+}
+					}
+// Following is the usage description for the get_tuple_attribute_value function.
+//
+// Arg1: Your tuple1
+// Arg2: Your tuple2
+// Arg3: A mutable variable of list<string> type in which the
+//       attribute names that differ in their values will be returned.
+// Arg4: A mutable int32 variable to receive non-zero error code if any.
+// Arg5: A boolean value to enable debug tracing inside this function.
+// It is a void function that returns nothing.
+```
+
 ## Design considerations
 This toolkit came into existence for a specific need with which a large enterprise customer approached the author of this toolkit. There is already a built-in function named *evalPredicate* that is available in the official IBM Streams product. However, that function has certain limitations. To fill that gap, this toolkit with its own **eval_predicate** function is being made available freely via the publicly accessible IBMStreams GitHub. The **eval_predicate** function from this toolkit differs from the *evalPredicate* built-in function in the IBM Streams product in the following ways.
 
@@ -113,7 +185,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
 2. This new eval_predicate function allows the user defined rule expression to access nested tuple attributes.
 
-3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE.
+3. This new eval_predicate function allows the user defined rule expression to have operation verbs such as contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, equalsCI, notEqualsCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE.
 
 4. This new eval_predicate function supports the following operations inside the rule.
 
@@ -123,7 +195,7 @@ This toolkit came into existence for a specific need with which a large enterpri
 
    c. It supports these arithmetic operations: +, -, *, /, %
 
-   d. It supports these special operations for rstring, set, list and map: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
+   d. It supports these special operations for rstring, set, list and map: contains, startsWith, endsWith, notContains, notStartsWith, notEndsWith, in, containsCI, startsWithCI, endsWithCI, notContainsCI, notStartsWithCI, notEndsWithCI, inCI, equalsCI, notEqualsCI, sizeEQ, sizeNE, sizeLT, sizeLE, sizeGT, sizeGE
 
    e. No bitwise operations are supported at this time.
 

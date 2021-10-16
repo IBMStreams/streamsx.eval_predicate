@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Sep/04/2021
+Last modified on: Oct/16/2021
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -101,6 +101,13 @@ toolkit i.e. how to get a value of a specific tuple attribute as
 that is expressed via a user provided string input.
 In this example, you can search for get_tuple_attribute_value to
 see 10 different test cases on that topic.
+
+Another feature available in the eval_prediate toolkit is to
+compare the attribute values of two tuples that are made of
+the same schema and to return a list containing the 
+attribute names that differ in their values. In this example,
+you can search for compare_tuple_attributes to see a few
+test cases on that topic.
 
 How can you use this new eval_predicate function?
 -------------------------------------------------
@@ -392,6 +399,89 @@ composite EvalPredicateExample {
 						printStringLn("Testcase 2.6: Tuple attribute value was not fetched successfully. Error=" + (rstring)error);
 					}
 
+					// Compare the attribute values of two tuples that are based on the same schema.
+					// Arg1: Your tuple1
+					// Arg2: Your tuple2
+					// Arg3: A mutable variable of list<string> type in which the
+					//       attribute names that differ in their values will be returned.
+					// Arg4: A mutable int32 variable to receive non-zero error code if any.
+					// Arg5: A boolean value to enable debug tracing inside this function.
+					//
+					// 2.7
+					// Compare two tuples that have no differing attribute values.
+					//
+					// Declare a nested tuple data structure to be used in this test case.
+					type NestedType1_t = int32 x, float64 y, rstring z, list<int32> l;
+					type NestedType2_t = NestedType1_t m, map<int32, boolean> n, timestamp o;
+					type Test_t = boolean a, int32 b, uint64 c, float32 d, float64 e,
+						rstring f, set<int32> g, list<rstring> h, map<int32, rstring> i,
+						map<rstring, float64> j, NestedType2_t k;
+					
+					// Create two tuples that are based on the same schema.
+					mutable Test_t myTuple1 = {};
+					mutable Test_t myTuple2 = {};
+					mutable list<rstring> differingAttributes = [];
+					
+					// Populate the tuple with some data.
+					myTuple1.a = true;
+					myTuple1.b = 456;
+					myTuple1.c = 789ul;
+					myTuple1.d = (float32)123.45;
+					myTuple1.e = 987.65;
+					myTuple1.f = "Life is mainly there to have fun.";
+					myTuple1.g = {5, 9, 2, 6};
+					myTuple1.h = ['One', 'Two', 'Three'];
+					myTuple1.i = {1:'One', 2:'Two', 3:'Three'};
+					myTuple1.j = {"One":1.0, "Two":2.0, "Three":3.0};
+					myTuple1.k.m.x = 678;
+					myTuple1.k.m.y = 936.27;
+					myTuple1.k.m.z = "String inside a nested tuple.";
+					myTuple1.k.m.l = [67, 78, 89];
+					myTuple1.k.n = {1:true, 2:false, 3:true}; 
+					myTuple1.k.o = getTimestamp();
+						
+					// Make the second tuple same as the first tuple.
+					myTuple2 = myTuple1;
+					
+					// Compare them now.
+					compare_tuple_attributes(myTuple1, myTuple2,
+	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+	    			
+					if(error == 0) {
+						printStringLn("Testcase 2.7: Compare tuple attributes function returned successfully. " +
+							"differingAttributes = " + (rstring)differingAttributes);
+					} else {
+						printStringLn("Testcase 2.7: Compare tuple attributes function returned an error. Error=" + (rstring)error);
+					}
+	    					
+					// 2.8
+					// Compare two tuples that have differing attribute values.
+					//
+					// Make the second tuple to have a few different attribute values than the first tuple.
+					myTuple2.a = false;
+					myTuple2.d = (float32)145.12;
+					myTuple2.f = "Life is mainly there to have joy and peace.";
+					myTuple2.i = {10:'Ten', 9:'Nine', 8:'Eight'};
+					myTuple2.k.m.y = 27.93;
+					myTuple2.k.m.z = "Different string inside a nested tuple.";
+					myTuple2.k.n = {1:true, 2:true, 3:true};
+					// Wait for 2 seconds for time to change.
+					block(2.0);
+					myTuple2.k.o = getTimestamp(); 
+					
+					// Clear the list.
+					differingAttributes = (list<rstring>)[];
+					// Compare them now.
+					compare_tuple_attributes(myTuple1, myTuple2,
+	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+	    			
+					if(error == 0) {
+						printStringLn("Testcase 2.8: Compare tuple attributes function returned successfully. " +
+							"differingAttributes = " + (rstring)differingAttributes);
+					} else {
+						printStringLn("Testcase 2.8: Compare tuple attributes function returned an error. Error=" + (rstring)error);
+					}
+					
 					// ============== TESTCASE GROUP 3 ============== 
 					mutable City_t myCity = {};
 					myCity.name = "White Plains";

@@ -28,6 +28,19 @@ It fetches the value of a user given attribute name if it is present in the user
 		</description>
         <prototype>&lt;tuple T1, any T2> public void get_tuple_attribute_value(rstring attributeName, T1 myTuple, mutable T2 value, mutable int32 error, boolean trace)</prototype>
       </function>
+      
+      <function>
+        <description>
+It compares the attribute values of two tuples that are made of the same schema and returns a list containing the attribute names that have differing values.
+@param myTuple1 First of the two user given tuples to be compared. Type: Tuple
+@param myTuple2 Second of the two user given tuples to be compared. Type: Tuple
+@param differingAttributes A mutable list variable that will contain the attribute names that have differing values. Type: list&lt;rstring&gt;
+@param error A mutable variable that will contain a non-zero error code if an error occurs. Type: int32 
+@param trace A boolean value to enable tracing inside this function. Type: boolean
+@return It returns nothing.  Type: void
+		</description>
+        <prototype>&lt;tuple T1> public void compare_tuple_attributes(T1 myTuple1, T1 myTuple2, mutable list&lt;rstring&gt; differingAttributes, mutable int32 error, boolean trace)</prototype>
+      </function>
     </functions>
     
     <dependencies>
