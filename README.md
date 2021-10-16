@@ -167,7 +167,7 @@ if(error == 0) {
    printStringLn("Compare tuple attributes function returned an error. Error=" + (rstring)error);
 }
 					}
-// Following is the usage description for the get_tuple_attribute_value function.
+// Following is the usage description for the compare_tuple_attributes function.
 //
 // Arg1: Your tuple1
 // Arg2: Your tuple2
