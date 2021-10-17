@@ -403,9 +403,11 @@ composite EvalPredicateExample {
 					// Arg1: Your tuple1
 					// Arg2: Your tuple2
 					// Arg3: A mutable variable of list<string> type in which the
+					//       attribute names that have a match in their values will be returned.
+					// Arg4: A mutable variable of list<string> type in which the
 					//       attribute names that differ in their values will be returned.
-					// Arg4: A mutable int32 variable to receive non-zero error code if any.
-					// Arg5: A boolean value to enable debug tracing inside this function.
+					// Arg5: A mutable int32 variable to receive non-zero error code if any.
+					// Arg6: A boolean value to enable debug tracing inside this function.
 					//
 					// 2.7
 					// Compare two tuples that have no differing attribute values.
@@ -420,6 +422,7 @@ composite EvalPredicateExample {
 					// Create two tuples that are based on the same schema.
 					mutable Test_t myTuple1 = {};
 					mutable Test_t myTuple2 = {};
+					mutable list<rstring> matchingAttributes = [];
 					mutable list<rstring> differingAttributes = [];
 					
 					// Populate the tuple with some data.
@@ -445,11 +448,13 @@ composite EvalPredicateExample {
 					
 					// Compare them now.
 					compare_tuple_attributes(myTuple1, myTuple2,
-	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+						matchingAttributes, differingAttributes, 
+						error, $EVAL_PREDICATE_TRACING);
 	    			
 					if(error == 0) {
 						printStringLn("Testcase 2.7: Compare tuple attributes function returned successfully. " +
-							"differingAttributes = " + (rstring)differingAttributes);
+							", matchingAttributes = " + (rstring)matchingAttributes + 
+							", differingAttributes = " + (rstring)differingAttributes);
 					} else {
 						printStringLn("Testcase 2.7: Compare tuple attributes function returned an error. Error=" + (rstring)error);
 					}
@@ -470,14 +475,17 @@ composite EvalPredicateExample {
 					myTuple2.k.o = getTimestamp(); 
 					
 					// Clear the list.
+					matchingAttributes = (list<rstring>)[];
 					differingAttributes = (list<rstring>)[];
 					// Compare them now.
 					compare_tuple_attributes(myTuple1, myTuple2,
-	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+						matchingAttributes, differingAttributes, 
+						error, $EVAL_PREDICATE_TRACING);
 	    			
 					if(error == 0) {
 						printStringLn("Testcase 2.8: Compare tuple attributes function returned successfully. " +
-							"differingAttributes = " + (rstring)differingAttributes);
+							", matchingAttributes = " + (rstring)matchingAttributes + 
+							", differingAttributes = " + (rstring)differingAttributes);
 					} else {
 						printStringLn("Testcase 2.8: Compare tuple attributes function returned an error. Error=" + (rstring)error);
 					}

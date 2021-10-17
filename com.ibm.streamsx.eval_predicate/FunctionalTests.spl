@@ -9059,9 +9059,11 @@ composite FunctionalTests {
 					// Arg1: Your tuple1
 					// Arg2: Your tuple2
 					// Arg3: A mutable variable of list<string> type in which the
+					//       attribute names that have a match in their values will be returned.
+					// Arg4: A mutable variable of list<string> type in which the
 					//       attribute names that differ in their values will be returned.
-					// Arg4: A mutable int32 variable to receive non-zero error code if any.
-					// Arg5: A boolean value to enable debug tracing inside this function.
+					// Arg5: A mutable int32 variable to receive non-zero error code if any.
+					// Arg6: A boolean value to enable debug tracing inside this function.
 					//
 					// C1.49
 					// Compare two tuples that have no differing attribute values.
@@ -9076,6 +9078,7 @@ composite FunctionalTests {
 					// Create two tuples that are based on the same schema.
 					mutable Test_t myTuple1 = {};
 					mutable Test_t myTuple2 = {};
+					mutable list<rstring> matchingAttributes = [];
 					mutable list<rstring> differingAttributes = [];
 					
 					// Populate the tuple with some data.
@@ -9093,19 +9096,21 @@ composite FunctionalTests {
 					myTuple1.k.m.y = 936.27;
 					myTuple1.k.m.z = "String inside a nested tuple.";
 					myTuple1.k.m.l = [67, 78, 89];
-					myTuple1.k.n = {1:true, 2:false, 3:true};
+					myTuple1.k.n = {1:true, 2:false, 3:true}; 
 					myTuple1.k.o = getTimestamp();
-
+						
 					// Make the second tuple same as the first tuple.
 					myTuple2 = myTuple1;
 					
 					// Compare them now.
 					compare_tuple_attributes(myTuple1, myTuple2,
-	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+						matchingAttributes, differingAttributes, 
+						error, $EVAL_PREDICATE_TRACING);
 	    			
 					if(error == 0) {
 						printStringLn("Testcase C1.49: Compare tuple attributes function returned successfully. " +
-							"differingAttributes = " + (rstring)differingAttributes);
+							", matchingAttributes = " + (rstring)matchingAttributes + 
+							", differingAttributes = " + (rstring)differingAttributes);
 					} else {
 						printStringLn("Testcase C1.49: Compare tuple attributes function returned an error. Error=" + (rstring)error);
 					}
@@ -9120,20 +9125,23 @@ composite FunctionalTests {
 					myTuple2.i = {10:'Ten', 9:'Nine', 8:'Eight'};
 					myTuple2.k.m.y = 27.93;
 					myTuple2.k.m.z = "Different string inside a nested tuple.";
-					myTuple2.k.n = {1:true, 2:true, 3:true}; 
+					myTuple2.k.n = {1:true, 2:true, 3:true};
 					// Wait for 2 seconds for time to change.
 					block(2.0);
 					myTuple2.k.o = getTimestamp(); 
-
+					
 					// Clear the list.
+					matchingAttributes = (list<rstring>)[];
 					differingAttributes = (list<rstring>)[];
 					// Compare them now.
 					compare_tuple_attributes(myTuple1, myTuple2,
-	    				differingAttributes, error, $EVAL_PREDICATE_TRACING);
+						matchingAttributes, differingAttributes, 
+						error, $EVAL_PREDICATE_TRACING);
 	    			
 					if(error == 0) {
 						printStringLn("Testcase C1.50: Compare tuple attributes function returned successfully. " +
-							"differingAttributes = " + (rstring)differingAttributes);
+							", matchingAttributes = " + (rstring)matchingAttributes + 
+							", differingAttributes = " + (rstring)differingAttributes);
 					} else {
 						printStringLn("Testcase C1.50: Compare tuple attributes function returned an error. Error=" + (rstring)error);
 					}

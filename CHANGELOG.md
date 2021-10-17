@@ -1,5 +1,9 @@
 # Changes
 
+## v1.1.3
+* Oct/16/2021
+* Enhanced the compare_tuple_attributes function to give back two lists i.e. one with the attribute names that have matching values and another with the attribute names that have differing values.
+
 ## v1.1.2
 * Oct/16/2021
 * Added a new function compare_tuple_attributes to compare the attribute values of two tuples that are based on the same schema and then give back a list containing the attribute names that have differing values in the two tuples being compared.

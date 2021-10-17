@@ -106,7 +106,7 @@ if(error == 0) {
 // It is a void function that returns nothing.
 ```
 
-**compare_tuple_attributes** is another C++ native function provided via this toolkit. This function compares the attribute values of two tuples that are based on the same schema. It will give back a list containing attribute names that have differing values in the two tuples being compared. It supports primitive types (int32, float64, rstring etc.) as well as collection types (set, list and map). It also allows flat tuples as well as deeply nested tuples to be compared.
+**compare_tuple_attributes** is another C++ native function provided via this toolkit. This function compares the attribute values of two tuples that are based on the same schema. It will give back a list containing attribute names that have matching values and another list containing attribute names that have differing values in the two tuples being compared. It supports primitive types (int32, float64, rstring etc.) as well as collection types (set, list and map). It allows flat tuples as well as deeply nested tuples to be compared.
 
 ```
 // This namespace usage declaration is needed at the top of an application.
@@ -122,6 +122,7 @@ type Test_t = boolean a, int32 b, uint64 c, float32 d, float64 e,
 // Create two tuples that are based on the same schema.
 mutable Test_t myTuple1 = {};
 mutable Test_t myTuple2 = {};
+mutable list<rstring> matchingAttributes = [];
 mutable list<rstring> differingAttributes = [];
 					
 // Populate the tuple with some data.
@@ -157,14 +158,17 @@ block(2.0);
 myTuple2.k.o = getTimestamp(); 
 					
 // Compare them now.
-compare_tuple_attributes(myTuple1, myTuple2, differingAttributes, 
-                         error, $EVAL_PREDICATE_TRACING);
+compare_tuple_attributes(myTuple1, myTuple2, 
+   matchingAttributes, differingAttributes, 
+   error, $EVAL_PREDICATE_TRACING);
 	    			
 if(error == 0) {
    printStringLn("Compare tuple attributes function returned successfully. " +
-      "differingAttributes = " + (rstring)differingAttributes);
+      "matchingAttributes = " + (rstring)matchingAttributes + 
+      ", differingAttributes = " + (rstring)differingAttributes);
 } else {
-   printStringLn("Compare tuple attributes function returned an error. Error=" + (rstring)error);
+   printStringLn("Compare tuple attributes function returned an error. Error=" + 
+     (rstring)error);
 }
 					}
 // Following is the usage description for the compare_tuple_attributes function.
@@ -172,9 +176,11 @@ if(error == 0) {
 // Arg1: Your tuple1
 // Arg2: Your tuple2
 // Arg3: A mutable variable of list<string> type in which the
+//       attribute names that have a match in their values will be returned.
+// Arg4: A mutable variable of list<string> type in which the
 //       attribute names that differ in their values will be returned.
-// Arg4: A mutable int32 variable to receive non-zero error code if any.
-// Arg5: A boolean value to enable debug tracing inside this function.
+// Arg5: A mutable int32 variable to receive non-zero error code if any.
+// Arg6: A boolean value to enable debug tracing inside this function.
 // It is a void function that returns nothing.
 ```
 

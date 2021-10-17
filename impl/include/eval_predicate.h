@@ -533,7 +533,9 @@ namespace eval_predicate_functions {
     // attribute names that have differing values.
     template<class T1>
     void compare_tuple_attributes(T1 const & myTuple1, T1 const & myTuple2,
-    	SPL::list<rstring> & differingAttributes, int32 & error, boolean trace);
+    	SPL::list<rstring> & matchingAttributes,
+		SPL::list<rstring> & differingAttributes,
+		int32 & error, boolean trace);
     // ====================================================================
 
 	// Evaluate a given expression.
@@ -10523,43 +10525,48 @@ namespace eval_predicate_functions {
     } // End of fetchTupleAttributeValue
 
 	// This function compares the attribute values of two tuples that are
-    // made of the same schema and returns a list containing the
-    // attribute names that have differing values.
+	// made of the same schema and returns a list containing the
+	// attribute names that have matching values and another list containing
+	// the attribute names that have differing values.
 	//
 	// Compare the attribute values of two tuples that are based on the same schema.
 	// Arg1: Your tuple1
 	// Arg2: Your tuple2
 	// Arg3: A mutable variable of list<string> type in which the
+	//       attribute names that have a match in their values will be returned.
+	// Arg4: A mutable variable of list<string> type in which the
 	//       attribute names that differ in their values will be returned.
-	// Arg4: A mutable int32 variable to receive non-zero error code if any.
-	// Arg5: A boolean value to enable debug tracing inside this function.
+	// Arg5: A mutable int32 variable to receive non-zero error code if any.
+	// Arg6: A boolean value to enable debug tracing inside this function.
 	// It is a void method that returns nothing.
 	//
 	template<class T1>
 	inline void compare_tuple_attributes(T1 const & myTuple1, T1 const & myTuple2,
-	    SPL::list<rstring> & differingAttributes, int32 & error, boolean trace) {
-	    boolean result = false;
-    	error = ALL_CLEAR;
+		SPL::list<rstring> & matchingAttributes,
+		SPL::list<rstring> & differingAttributes,
+		int32 & error, boolean trace) {
+		boolean result = false;
+		error = ALL_CLEAR;
 
-    	// The two incoming tuples are expected to be based on the same schema.
-    	// So, let us do the initial prep work using one of those two tuples.
-    	//
-    	// Get the string literal of a given tuple1.
+		// The two incoming tuples are expected to be based on the same schema.
+		// So, let us do the initial prep work using one of those two tuples.
+		//
+		// Get the string literal of a given tuple1.
 		// Example of myTuple's schema:
 		// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 		//
-    	rstring myTupleSchema = getSPLTypeName(myTuple1, trace);
+		rstring myTupleSchema = getSPLTypeName(myTuple1, trace);
 
-    	if(myTupleSchema == "") {
-    		// This should never occur. If it happens in
-    		// extremely rare cases, we have to investigate the
-    		// tuple literal schema generation function.
-    		error = TUPLE_LITERAL_SCHEMA_GENERATION_ERROR;
-    		return;
-    	}
+		if(myTupleSchema == "") {
+			// This should never occur. If it happens in
+			// extremely rare cases, we have to investigate the
+			// tuple literal schema generation function.
+			error = TUPLE_LITERAL_SCHEMA_GENERATION_ERROR;
+			return;
+		}
 
 		// Let us parse the individual attributes of the given tuple and
-    	// store them in a map.
+		// store them in a map.
 		SPL::map<rstring, rstring> tupleAttributesMap;
 		result = parseTupleAttributes(myTupleSchema,
 			tupleAttributesMap, error, trace);
@@ -10588,70 +10595,74 @@ namespace eval_predicate_functions {
 			// In this case, We have to get the tuple t1.t2.t3 and then fetch
 			// the value of x from that tuple.
 			//
-    		// We may have attributes in nested tuples. So, let us parse and
-    		// get all the nested tuple names that are separated by a period character.
-    		SPL::list<rstring> attribTokens =
-    			Functions::String::tokenize(keys[i], ".", false);
-    		ConstValueHandle attribValue1;
-    		ConstValueHandle attribValue2;
+			// We may have attributes in nested tuples. So, let us parse and
+			// get all the nested tuple names that are separated by a period character.
+			SPL::list<rstring> attribTokens =
+				Functions::String::tokenize(keys[i], ".", false);
+			ConstValueHandle attribValue1;
+			ConstValueHandle attribValue2;
 
-    		if(Functions::Collections::size(attribTokens) == 1) {
-    			// This is just an attribute that is not in a nested tuple and
-    			// instead it is part of the top level tuple.
-    			attribValue1 = myTuple1.getAttributeValue(keys[i]);
-    			attribValue2 = myTuple2.getAttributeValue(keys[i]);
-    		} else {
-    			// Let us traverse through all the nested tuples and
-    			// reach the final tuple in the nested hierarchy for the current attribute.
-    			// Start with with the very first tuple i.e. at index 0 in the
-    			// list that contains all the nested tuple names.
-    			attribValue1 = myTuple1.getAttributeValue(attribTokens[0]);
-    			attribValue2 = myTuple2.getAttributeValue(attribTokens[0]);
+			if(Functions::Collections::size(attribTokens) == 1) {
+				// This is just an attribute that is not in a nested tuple and
+				// instead it is part of the top level tuple.
+				attribValue1 = myTuple1.getAttributeValue(keys[i]);
+				attribValue2 = myTuple2.getAttributeValue(keys[i]);
+			} else {
+				// Let us traverse through all the nested tuples and
+				// reach the final tuple in the nested hierarchy for the current attribute.
+				// Start with with the very first tuple i.e. at index 0 in the
+				// list that contains all the nested tuple names.
+				attribValue1 = myTuple1.getAttributeValue(attribTokens[0]);
+				attribValue2 = myTuple2.getAttributeValue(attribTokens[0]);
 
-    			// Loop through the list and reach the final tuple in the
-    			// nested hierarchy i.e. N-1 where the Nth one is the actual
-    			// attribute.
-    			for(int j=1; j<Functions::Collections::size(attribTokens)-1; j++) {
-    				Tuple const & data1 = attribValue1;
-    				Tuple const & data2 = attribValue2;
+				// Loop through the list and reach the final tuple in the
+				// nested hierarchy i.e. N-1 where the Nth one is the actual
+				// attribute.
+				for(int j=1; j<Functions::Collections::size(attribTokens)-1; j++) {
+					Tuple const & data1 = attribValue1;
+					Tuple const & data2 = attribValue2;
 
-    				try {
+					try {
 						attribValue1 = data1.getAttributeValue(attribTokens[j]);
 						attribValue2 = data2.getAttributeValue(attribTokens[j]);
-    				} catch(...) {
+					} catch(...) {
 						error = INVALID_ATTRIBUTE_FOUND_DURING_COMPARISON_OF_TUPLES;
 						return;
 					}
-    			}
+				}
 
-    			// Now that we reached the last tuple in the nested hierarchy,
-    			// we can read the value of the actual attribute inside that tuple.
-    			// e-g: details.location.geo.latitude
-    			// In this example, geo is the last tuple in the nested hierarchy and
-    			// it contains the latitude attribute.
-    			Tuple const & data3 = attribValue1;
-    			Tuple const & data4 = attribValue2;
+				// Now that we reached the last tuple in the nested hierarchy,
+				// we can read the value of the actual attribute inside that tuple.
+				// e-g: details.location.geo.latitude
+				// In this example, geo is the last tuple in the nested hierarchy and
+				// it contains the latitude attribute.
+				Tuple const & data3 = attribValue1;
+				Tuple const & data4 = attribValue2;
 
-    			try {
+				try {
 					attribValue1 = data3.getAttributeValue(attribTokens[Functions::Collections::size(attribTokens)-1]);
 					attribValue2 = data4.getAttributeValue(attribTokens[Functions::Collections::size(attribTokens)-1]);
-    			} catch(...) {
+				} catch(...) {
 					error = INVALID_ATTRIBUTE_FOUND_DURING_COMPARISON_OF_TUPLES;
 					return;
 				}
-    		} // End of else block.
+			} // End of else block.
 
 			// We will cast the type of the attribute values to string and
 			// compare them to see if they match. It is less elegant and
-    		// not super efficient to do it this way. But it is somewhat a
-    		// simpler approach than the other available alternatives.
+			// not super efficient to do it this way. But it is somewhat a
+			// simpler approach than the other available alternatives.
 			std::string attribValueString1 = attribValue1.toString();
 			std::string attribValueString2 = attribValue2.toString();
 			SPL::boolean valueMatch = (attribValueString1 == attribValueString2) ? true : false;
 
-			if(valueMatch == false) {
+			if(valueMatch == true) {
+				// Value of this attribute has a match in the two tuples given by the user.
+				// Let us add this attribute name to the first result list.
+				Functions::Collections::appendM(matchingAttributes, keys[i]);
+			} else {
 				// Value of this attribute differs in the two tuples given by the user.
-				// Let us add this attribute name to the result list.
+				// Let us add this attribute name to the second result list.
 				Functions::Collections::appendM(differingAttributes, keys[i]);
 			}
 
