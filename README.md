@@ -184,6 +184,39 @@ if(error == 0) {
 // It is a void function that returns nothing.
 ```
 
+**get_tuple_schema_and_attribute_info** is another C++ native function provided via this toolkit. This function fetches the tuple schema literal string along with the tuple attribute information as a map with fully qualified tuple attribute names and their SPL type names as key/value pairs in that map.
+
+```
+// This namespace usage declaration is needed at the top of an application.
+use com.ibm.streamsx.eval_predicate::*;
+
+mutable rstring tupleSchema = "";
+mutable map<rstring, rstring> attributeInfo = {};
+					
+get_tuple_schema_and_attribute_info(myTuple1, tupleSchema,
+   attributeInfo, error, $EVAL_PREDICATE_TRACING);
+
+if(error == 0) {
+   printStringLn("Get tuple schema function returned successfully. " +
+      ", tupleSchema = " + tupleSchema + 
+      ", attributeInfo = " + (rstring)attributeInfo);
+   } else {
+      printStringLn("Get tuple schema function returned an error. Error=" + (rstring)error);
+   }
+
+// Following is the usage description for the get_tuple_schema_and_attribute_info function.
+// Arg1: Your tuple
+// Arg2: A mutable variable of rstring type in which the
+//       tuple schema literal string will be returned.
+// Arg3: A mutable variable of map<string, rstring> type in which the
+//       tuple attribute information will be returned. Map keys will
+//       carry the fully qualified tuple attribute names and the
+//       map values will carry the SPL type name of the attributes.
+// Arg4: A mutable int32 variable to receive non-zero error code if any.
+// Arg5: A boolean value to enable debug tracing inside this function.
+// It is a void function that returns nothing.
+```
+
 ## Design considerations
 This toolkit came into existence for a specific need with which a large enterprise customer approached the author of this toolkit. There is already a built-in function named *evalPredicate* that is available in the official IBM Streams product. However, that function has certain limitations. To fill that gap, this toolkit with its own **eval_predicate** function is being made available freely via the publicly accessible IBMStreams GitHub. The **eval_predicate** function from this toolkit differs from the *evalPredicate* built-in function in the IBM Streams product in the following ways.
 

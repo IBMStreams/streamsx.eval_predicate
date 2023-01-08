@@ -42,6 +42,19 @@ It compares the attribute values of two tuples that are made of the same schema 
 		</description>
         <prototype>&lt;tuple T1> public void compare_tuple_attributes(T1 myTuple1, T1 myTuple2, mutable list&lt;rstring&gt; matchingAttributes, mutable list&lt;rstring&gt; differingAttributes, mutable int32 error, boolean trace)</prototype>
       </function>
+      
+      <function>
+        <description>
+It fetches the schema literal string of a given tuple along with the information about all of its attributes.
+@param myTuple A user defined tuple for which schema and attribute information will be obtained. Type: Tuple
+@param schema A mutable variable in which the complete schema literal string of a given tuple will be returned. Type: rstring
+@param attributeInfo A mutable map variable in which information about the tuple attributes will be returned. Map key will carry the fully qualified name of a given tuple attribute and map value will carry the SPL type name of that attribute. Type: map&lt;rstring, rstring&gt;
+@param error A mutable variable that will contain a non-zero error code if an error occurs. Type: int32
+@param trace A boolean value to enable tracing inside this function. Type: boolean
+@return It returns nothing.  Type: void
+	  </description>
+	  <prototype>&lt;tuple T1> public void get_tuple_schema_and_attribute_info(T1 myTuple, mutable rstring schema, mutable map&lt;rstring, rstring&gt; attributeInfo, mutable int32 error, boolean trace)</prototype>
+	</function>
     </functions>
     
     <dependencies>

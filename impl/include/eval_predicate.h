@@ -1,13 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021
+# Copyright IBM Corp. 2021, 2023
 ==============================================
 */
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Oct/16/2021
+Last modified on: Jan/07/2023
+Author(s): Senthil Nathan (sen@us.ibm.com)
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -377,7 +378,7 @@ namespace eval_predicate_functions {
 			// subexpressions present in a fully validated expression.
 			// It is important to understand the structure of this map which
 			// is explained in great detail throughout this file.
-			// One such explanation is available around line 643 of this file.
+			// One such explanation is available around line 663 of this file.
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
 
 			// This list provides the subexpression map keys in sorted order.
@@ -536,6 +537,13 @@ namespace eval_predicate_functions {
     	SPL::list<rstring> & matchingAttributes,
 		SPL::list<rstring> & differingAttributes,
 		int32 & error, boolean trace);
+    // This method fetches the tuple schema literal string and the
+    // tuple attribute information map with fully qualified tuple
+    // attribute names and values as key/value pairs.
+    template<class T1>
+    void get_tuple_schema_and_attribute_info(T1 const & myTuple,
+		rstring & schema, SPL::map<rstring, rstring> & attributeInfo,
+		int32 & error, boolean trace);
     // ====================================================================
 
 	// Evaluate a given expression.
@@ -562,7 +570,7 @@ namespace eval_predicate_functions {
     		return(false);
     	}
 
-    	// Get the string literal of a given tuple.
+    	// Get the schema literal string of a given tuple.
 		// Example of myTuple's schema:
 		// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 		//
@@ -652,7 +660,6 @@ namespace eval_predicate_functions {
 			// user provided tuple and display its attribute names and values.
 			traceTupleAtttributeNamesAndValues(myTuple, tupleAttributesMap, trace);
 
-			// Note: The space below between > > is a must. Otherwise, compiler will give an error.
 			// This map's key is a subexpression id.
 			// Subexpression id will go something like this:
 			// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
@@ -701,6 +708,7 @@ namespace eval_predicate_functions {
 			// Intra subexpression logical operator - When N/A, it will have an empty string.
 			// ...   - The sequence above repeats for this subexpression.
 			//
+			// Note: The space below between > > is a must. Otherwise, compiler will give an error.
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
 			// Store the logical operators within the nested sub-expressions.
 			// Key for this map will be id of the nested subexpression that
@@ -798,7 +806,7 @@ namespace eval_predicate_functions {
     // ====================================================================
 
     // ====================================================================
-    // This function receives a Tuple as input and returns a tuple literal string.
+    // This function receives a Tuple as input and returns a tuple schema literal string.
     // We will later parse the tuple literal string to create a map of all the
     // attributes in a user given tuple.
 	// Example of myTuple's schema that will be returned by this function:
@@ -10674,6 +10682,50 @@ namespace eval_predicate_functions {
 			}
 		} // End of for loop.
 	} // End of compare_tuple_attributes
+
+    // This method fetches the tuple schema literal string and the
+    // tuple attribute information map with fully qualified tuple
+    // attribute names and their SPL type names as key/value
+    // pairs in that map.
+	//
+	// Get the tuple schema literal string along with the tuple attribute information.
+	// Arg1: Your tuple
+	// Arg2: A mutable variable of rstring type in which the
+	//       tuple schema literal string will be returned.
+	// Arg3: A mutable variable of map<string, rstring> type in which the
+	//       tuple attribute information will be returned. Map keys will
+	//       carry the fully qualified tuple attribute names and the
+	//       map values will carry the SPL type name of the attributes.
+	// Arg4: A mutable int32 variable to receive non-zero error code if any.
+	// Arg5: A boolean value to enable debug tracing inside this function.
+	// It is a void method that returns nothing.
+	//
+    template<class T1>
+    void get_tuple_schema_and_attribute_info(T1 const & myTuple,
+		rstring & schema, SPL::map<rstring, rstring> & attributeInfo,
+		int32 & error, boolean trace) {
+		error = ALL_CLEAR;
+
+		// Get the schema literal string of a given tuple.
+		// Example of myTuple's schema:
+		// myTuple=tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
+		//
+		schema = "";
+		schema = getSPLTypeName(myTuple, trace);
+
+		if(schema == "") {
+			// This should never occur. If it happens in
+			// extremely rare cases, we have to investigate the
+			// tuple literal schema generation function.
+			error = TUPLE_LITERAL_SCHEMA_GENERATION_ERROR;
+			return;
+		}
+
+		// Let us parse the individual attributes of the given tuple and
+		// store them in a user provided map.
+		Functions::Collections::clearM(attributeInfo);
+		parseTupleAttributes(schema, attributeInfo, error, trace);
+    } // End of get_tuple_schema_and_attribute_info
     // ====================================================================
 } // End of namespace eval_predicate_functions
 // ====================================================================
@@ -10694,8 +10746,8 @@ last hurrah in my technical contributions to the incomparable IBM Streams.
 I will be thrilled to get another chance to associate with this wonderful
 product if it finds a new home for further development either inside or
 outside of IBM. Until then, I will continue to reminisce this unforgettable
-journey made possible by the passionate researchers, engineers and managers
-who are all simply world class.
+journey made possible by the passionate researchers, engineers, managers and
+customers who are all simply world class.
 
 It will take many more years for some other company or an open-source group to
 roll out a full-featured product that can be a true match for IBM Streams.

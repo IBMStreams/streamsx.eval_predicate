@@ -1,5 +1,9 @@
 # Changes
 
+## v1.1.4
+* Jan/07/2023
+* Added a new function get_tuple_schema_and_attribute_info to fetch the tuple schema literal string along with the tuple attribute information map with fully qualified tuple attribute names and their SPL type names as key/value pairs in that map. 
+
 ## v1.1.3
 * Oct/16/2021
 * Enhanced the compare_tuple_attributes function to give back two lists i.e. one with the attribute names that have matching values and another with the attribute names that have differing values.

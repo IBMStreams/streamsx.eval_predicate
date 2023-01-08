@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021
+# Copyright IBM Corp. 2021, 2023
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Oct/16/2021
+Last modified on: Jan/07/2023
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -108,6 +108,12 @@ the same schema and to return a list containing the
 attribute names that differ in their values. In this example,
 you can search for compare_tuple_attributes to see a few
 test cases on that topic.
+
+Another feature available in the eval_predicate toolkit is to
+get the schema literal string of a given tuple along with the 
+fully qualified attribute names and their SPL type names.
+In this example, you can search for get_tuple_schema_and_attribute_info
+to see a few test cases on that topic.
 
 How can you use this new eval_predicate function?
 -------------------------------------------------
@@ -489,6 +495,30 @@ composite EvalPredicateExample {
 					} else {
 						printStringLn("Testcase 2.8: Compare tuple attributes function returned an error. Error=" + (rstring)error);
 					}
+
+					// 2.9
+					// Get tuple schema literal string along with its attribute information.
+					//
+					mutable rstring tupleSchema = "";
+					mutable map<rstring, rstring> attributeInfo = {};
+					
+					// Call the specific function that can do this for us.
+					// It will return the tuple schema literal string in the 
+					// mutable string variable passed as a second function argument.
+					// It will return the tuple attribute information in the
+					// mutable map variable passed as a third function argument.
+					// This map's keys will hold the fully qualified tuple attribute names.
+					// This map's values will hold the SPL type names of the tuple attribute names.
+					get_tuple_schema_and_attribute_info(myTuple1, tupleSchema,
+						attributeInfo, error, $EVAL_PREDICATE_TRACING);
+
+					if(error == 0) {
+						printStringLn("Testcase 2.9: Get tuple schema function returned successfully. " +
+							", tupleSchema = " + tupleSchema + 
+							", attributeInfo = " + (rstring)attributeInfo);
+					} else {
+						printStringLn("Testcase 2.9: Get tuple schema function returned an error. Error=" + (rstring)error);
+					}					
 					
 					// ============== TESTCASE GROUP 3 ============== 
 					mutable City_t myCity = {};
