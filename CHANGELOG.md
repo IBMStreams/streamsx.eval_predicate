@@ -1,5 +1,9 @@
 # Changes
 
+## v1.1.5
+* Jan/10/2023
+* Added inline to the C++ function get_tuple_schema_and_attribute_info.
+
 ## v1.1.4
 * Jan/07/2023
 * Added a new function get_tuple_schema_and_attribute_info to fetch the tuple schema literal string along with the tuple attribute information map with fully qualified tuple attribute names and their SPL type names as key/value pairs in that map. 

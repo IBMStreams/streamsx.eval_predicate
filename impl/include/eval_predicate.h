@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Jan/07/2023
+Last modified on: Jan/10/2023
 Author(s): Senthil Nathan (sen@us.ibm.com)
 
 This toolkit's public GitHub URL:
@@ -10701,7 +10701,7 @@ namespace eval_predicate_functions {
 	// It is a void method that returns nothing.
 	//
     template<class T1>
-    void get_tuple_schema_and_attribute_info(T1 const & myTuple,
+    inline void get_tuple_schema_and_attribute_info(T1 const & myTuple,
 		rstring & schema, SPL::map<rstring, rstring> & attributeInfo,
 		int32 & error, boolean trace) {
 		error = ALL_CLEAR;
