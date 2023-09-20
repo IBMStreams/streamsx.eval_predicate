@@ -1,5 +1,12 @@
 # Changes
 
+## v1.1.6
+* Sep/20/2023
+* Made a major redesign to evaluate multi-level nested subexpressions.
+* Made plenty of code changes in the expression validation and evaluation sections.
+* Added many new trace points to follow the code execution path when troubleshooting.
+* Added 14 new multi-level nested subexpression test cases in FunctionalTests.spl.
+
 ## v1.1.5
 * Jan/10/2023
 * Added inline to the C++ function get_tuple_schema_and_attribute_info.

@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Jan/07/2023
+Last modified on: Sep/20/2023
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -1360,7 +1360,7 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A8.16: Evaluation execution failed. Error=" + (rstring)error);
 					}
-
+					
 					// A8.17 (rstring notContainsCI operation verb)
 					_rule = "(symbol notContainsCI 'intc')";
 					result = eval_predicate(_rule, _myTicker, error, $EVAL_PREDICATE_TRACING);
@@ -6746,6 +6746,204 @@ composite FunctionalTests {
 						printStringLn("Testcase A51.6: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A51.6: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.7 (Nested expression pattern 7)
+					// The following is a replica of an expression that is modeled after a 
+					// real-life business rule that is being used at one of our enterprise customers.                    
+                    _rule = "((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.7: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.7: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.7: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.8 (Nested expression pattern 8)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path2') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG2') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.8: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.8: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.8: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.9 (Nested expression pattern 9)
+                    // The following is done to swap the positions of the 
+                    // first and second parts of the rule used in A51.7.
+                    _rule = "(((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))) && ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) ";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.9: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.9: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.9: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.10 (Nested expression pattern 10)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "(((testId equalsCI 'Happy Path2') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG2') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))) && ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) ";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.10: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.10: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.10: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.11 (Nested expression pattern 11)
+                    // The following is same as the one used in A51.7 except for 
+                    // one more || clause is added in the second part of the rule.
+                    _rule = "((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || (((a.transport.plane.airliner equalsCI 'bOeInG') || (testId equalsCI 'Happy Path')) && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.11: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.11: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.11: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.12 (Nested expression pattern 12)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel2')) || (((a.transport.plane.airliner equalsCI 'bOeInG2') || (testId equalsCI 'Happy Path2')) && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.12: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.12: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.12: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.13 (Nested expression pattern 13)
+					// The following is after the removal of the extra open and 
+					// close parenthesis in the rule used in A51.7 to make it simpler.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.13: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.13: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.13: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.14 (Nested expression pattern 14)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path2' && a.rack.hw.vendor equalsCI 'Intel') || (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari2'))";                    
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.14: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.14: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.14: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.15 (Nested expression pattern 15)
+                    // The following is same as the rule above except for 
+                    // one more || clause is added in the second part of the rule.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG' || testId equalsCI 'Happy Path') && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.15: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.15: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.15: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.16 (Nested expression pattern 16)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari2') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG' || testId equalsCI 'Happy Path4') && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.16: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.16: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.16: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.17 (Nested expression pattern 17)
+                    // The following is same as the rule above except for 
+                    // more || clauses are added in the second part of the rule to
+                    // make it to have a 5 level deep nested subexpression.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.17: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.17: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.17: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.18 (Nested expression pattern 18)
+                    // Following rule is the same as above except for it is set up to give a result via a different boolean condition.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel2') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path2') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path5') || (testId equalsCI 'Happy Path6' && testId equalsCI 'Happy Path7')) && (testId equalsCI 'Happy Path8')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.18: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.18: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.18: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.19 (Nested expression pattern 19)
+                    // The following is similar to rule A51.17 except it has 
+                    // multi-level nesting in the first part of the rule with a 
+                    // combination of self-enclosed and non-self-enclosed subexpressions to
+                    // make it somewhat involved to validate and evaluate. The second part of
+                    // the rule is same as shown in A51.17.
+                    _rule = "(a.transport.plane.airliner equalsCI 'bOeInG' && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari' || (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2'))) && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.19: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.19: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.19: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.20 (Nested expression pattern 20)
+                    // The following is same as the rule above except for the
+                    // use of self-enclosed Subexpressions in the first part of 
+                    // the rule for the two SEs at the very beginning. Especially,
+                    // the very first SE of the rule expression is self-enclosed and
+                    // it is immediately followed by a multi-level nested SE. We have not seen
+                    // this pattern in other nested rule expression examples above.
+                    _rule = "((a.transport.plane.airliner equalsCI 'bOeInG') && ((a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') || (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2'))) && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')";
+					result = eval_predicate(_rule, _myTestData, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.20: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.20: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.20: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 					

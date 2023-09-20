@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Jan/07/2023
+Last modified on: Sep/20/2023
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a

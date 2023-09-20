@@ -7,8 +7,8 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Jan/10/2023
-Author(s): Senthil Nathan (sen@us.ibm.com)
+Last modified on: Sep/20/2023
+Author(s): Senthil Nathan (nysenthil@yahoo.com)
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -88,8 +88,12 @@ Following expressions use nested parenthesis.
 ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
 (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 
-Note
-----
+In addition to the expressions shown above, there is a whole different category of
+deeply nested ones. To see them, you can search in this file for
+"multi-level nested subexpression examples".
+
+Author's Note
+-------------
 The evalPredicate built-in function that is already available in
 the IBM Streams product is implemented using C++ logic that is
 tightly interwoven into the SPL programming model. It uses the
@@ -109,6 +113,48 @@ If positioned properly, this can be a difference maker for IBM Streams
 in the competitive marketplace. It will also help customers and partners
 in creating useful and powerful custom rule processors for many
 use cases in different business domains.
+
+What is available for diagnosing problems that may occur during rule evaluation?
+--------------------------------------------------------------------------------
+No one has written a completely bug free software asset yet. My code below is
+very much subject to that reality as well. Any complexly constructed rule string
+that is sent to the code below for processing can potentially trigger anomalies
+and errors during rule validation and during rule evaluation.
+If that happens, my sincere apologies.
+
+If a runtime error is encountered or the rule evaluation returns an unexpected
+error code or the rule evaluation returns a wrong boolean result, the caller of
+the eval_predicate API can set the final method argument of that API to true for
+enabling the internal tracing. That will create plenty of log tracing which
+will be displayed on the stdout (e-g: screen or a log file). That trace
+information will provide us details about the code path it took while
+executing the API and it will help us to get more insights about why and where it
+went wrong.
+
+Such trace point ids will give us an idea about how the entire rule expression
+was parsed, what subexpression ids were assigned, how the preparation was
+done for each subexpression, what was stored in a few very important
+internal data structures, how each SE was evaluated and how the individual
+SE results were combined to produce the final result etc.
+
+In the trace output, one can specifically search for these trace point ids:
+i) 1, 2a, 3a, 4a, 5a will give details about cache hit, tuple schema forming and tuple attribute parsing.
+ii) 6a, 7a, 8a, 9a will give parsing details for a subexpression made of LHS, OpVerb, RHS, LogicalOp.
+iii) 10a will give a full summary about the validation results of the entire expression.
+iv) 11a will give details about adding a fully validated expression to cache.
+v)  4b will give details about each subexpression that is about to be evaluated.
+vi) 4c will give details about how a given subexpression (non-nested,
+    single-level nested, multi-level nested) goes through a step by step evaluation.
+vii) 4d will give details about the final step of combining all the inter subexpression eval results.
+
+In addition, one can also search for _GGGGG_ and _HHHHH_ in the trace output
+which will show the key steps performed during rule processing. All of that will
+aid in understanding the code path that led to the rule processing errors.
+
+You can do self-diagnosis of the trace output or you can email it to this
+toolkit author's email address shown above to get it resolved. After the
+problem is resolved, caller has to remember to set the final method argument of
+the eval_predicate API to false for disabling the internal tracing.
 ============================================================
 */
 #ifndef FUNCTIONS_H_
@@ -286,6 +332,8 @@ use cases in different business domains.
 #define RHS_VALUE_WITH_MISSING_CLOSE_BRACKET_NO_MATCH_FOR_IN_OR_IN_CI_OPVERB 152
 #define INVALID_RHS_LIST_LITERAL_STRING_FOUND_FOR_IN_OR_IN_CI_OPVERB 153
 #define INVALID_ATTRIBUTE_FOUND_DURING_COMPARISON_OF_TUPLES 154
+#define SE_ID_NOT_FOUND_IN_INTRA_NESTED_SE_LOGICAL_OP_MAP 155
+#define SE_ID_NOT_FOUND_IN_INTRA_MULTI_LEVEL_NESTED_SE_LOGICAL_OP_MAP 156
 // ====================================================================
 // Define a C++ namespace that will contain our native function code.
 namespace eval_predicate_functions {
@@ -340,6 +388,16 @@ namespace eval_predicate_functions {
 				return(interSubexpressionLogicalOperatorsList);
 			}
 
+			// Senthil added this on Sep/20/2023.
+			SPL::map<rstring, int32> const & getMultiLevelNestedSubExpressionIdMap() {
+				return(multiLevelNestedSubExpressionIdMap);
+			}
+
+			// Senthil added this on Sep/20/2023.
+			SPL::map<rstring, rstring> const & getIntraMultiLevelNestedSubexpressionLogicalOperatorsMap() {
+				return(intraMultiLevelNestedSubexpressionLogicalOperatorsMap);
+			}
+
 			// Public setter methods of this class.
 			void setExpression(rstring const & expr) {
 				expression = expr;
@@ -365,6 +423,16 @@ namespace eval_predicate_functions {
 				interSubexpressionLogicalOperatorsList = opsList;
 			}
 
+			// Senthil added this on Sep/20/2023.
+			void setMultiLevelNestedSubExpressionIdMap(SPL::map<rstring, int32> const & myMap) {
+				multiLevelNestedSubExpressionIdMap = myMap;
+			}
+
+			// Senthil added this on Sep/20/2023.
+			void setIntraMultiLevelNestedSubexpressionLogicalOperatorsMap(SPL::map<rstring, rstring> const & myMap) {
+				intraMultiLevelNestedSubexpressionLogicalOperatorsMap = myMap;
+			}
+
 		private:
 			// Private member variables of this class.
 			// The entire user given expression is stored in this variable.
@@ -378,7 +446,8 @@ namespace eval_predicate_functions {
 			// subexpressions present in a fully validated expression.
 			// It is important to understand the structure of this map which
 			// is explained in great detail throughout this file.
-			// One such explanation is available around line 663 of this file.
+			// Such an explanation can be found by searching for the following phrase:
+			// "Subexpression id will go something like this"
 			SPL::map<rstring, SPL::list<rstring> > subexpressionsMap;
 
 			// This list provides the subexpression map keys in sorted order.
@@ -391,6 +460,33 @@ namespace eval_predicate_functions {
 			// This list contains the logical operators used in between
 			// different subexpressions present in a user given expression string.
 			SPL::list<rstring> interSubexpressionLogicalOperatorsList;
+
+			// Senthil added this on Sep/20/2023.
+			// This map contains the details about the multi-level nested subexpression ids.
+			// It helps in identifying the related subexpression ids after which a given
+			// logical operator appears within the multi-level nested subexpression hierarchy.
+			// Such information is useful to validate the proper use of logical operators in a
+			// multi-level nested subexpression.
+			// Key for this map is subexpression id and the value is an
+			// integer value that indicates the level (1, 2, 3 and so on) of the SE id inside
+			// the given multi-level nested SE.
+			SPL::map<rstring, int32> multiLevelNestedSubExpressionIdMap;
+
+			// Senthil added this on Sep/20/2023.
+			// This map contains the details about the multi-level nested subexpression logical operators.
+			// It helps in identifying the related subexpression ids that form a nested level in a
+			// multi-level nested subexpression. Such information is useful to perform the
+			// evaluation at a given nested level.
+			// Key for this map is subexpression id and the value is the
+			// intra logical operator within the nested subexpression.
+			// Any SE id that is at the very beginning and at the very end within a
+			// nested SE will be assigned a logical operator of an empty string to indicate
+			// that it is the first or last item for a given multi-level nested SE. All the
+			// other SE ids from the one after the beginning to one less than the final SE id
+			// within a given multi-level nested SE group will carry the logical operator that
+			// appears after that SE. This map will help us a lot later in the evaluation method to
+			// correctly evaluate and combine the results within a multi-level nested SE.
+			SPL::map<rstring, rstring> intraMultiLevelNestedSubexpressionLogicalOperatorsMap;
 	};
 
 	// This is the data type for the expression evaluation plan cache.
@@ -432,11 +528,14 @@ namespace eval_predicate_functions {
 		int32 & error, boolean trace);
     // Validate the expression.
 	// Note: The space below between > > is a must. Otherwise, compiler will give an error.
+    // Senthil made changes to this method signature on Sep/20/2023.
     boolean validateExpression(rstring const & expr,
     	SPL::map<rstring, rstring> const & tupleAttributesMap,
 		SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
 		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
 		SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
+		SPL::map<rstring, int32> & multiLevelNestedSubExpressionIdMap,
+		SPL::map<rstring, rstring> & intraMultiLevelNestedSubexpressionLogicalOperatorsMap,
 		int32 & error, int32 & validationStartIdx, boolean trace);
     // Evaluate the expression according to the predefined plan.
     boolean evaluateExpression(ExpressionEvaluationPlan *evalPlanPtr,
@@ -494,8 +593,10 @@ namespace eval_predicate_functions {
 		T1 const & rhsValue, rstring const & postArithmeticOperationVerb,
 		boolean & subexpressionEvalResult, int32 & error);
 	// Create the next subexpression id.
-	void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
-		rstring & subexpressionId);
+	void getNextSubexpressionId(char const & callerId,
+		int32 const & currentNestedSubexpressionLevel,
+		rstring & subexpressionId,
+		int32 const & currentDepthOfNestedSubexpression, boolean trace);
 	// Check if the next non-space character is an open parenthesis.
 	boolean isNextNonSpaceCharacterOpenParenthesis(blob const & myBlob,
 		int32 const & idx, int32 const & stringLength);
@@ -510,8 +611,12 @@ namespace eval_predicate_functions {
 	void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
 		SPL::list<rstring> const & subexpressionIdsList,
 		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
+		SPL::map<rstring, rstring> const & intraMultiLevelNestedSELogicalOpMap,
 		int32 & subexpressionCntInCurrentNestedGroup,
-		rstring & intraNestedSubexpressionLogicalOperator);
+		rstring & intraNestedSubexpressionLogicalOperator,
+		SPL::boolean & multiLevelNestedSubexpressionsPresent,
+		SPL::list<rstring> & multiLevelNestedSubexpressionIdsList);
+
 	// This method fetches the value of a user given
 	// attribute present in a user given tuple.
 	template<class T1, class T2>
@@ -544,6 +649,17 @@ namespace eval_predicate_functions {
     void get_tuple_schema_and_attribute_info(T1 const & myTuple,
 		rstring & schema, SPL::map<rstring, rstring> & attributeInfo,
 		int32 & error, boolean trace);
+    // This method inserts the multi-level nested SE id and a logical operator
+    // for a given SE id into the following two maps.
+    //
+    // 1) Multi-level nested SE id map
+    // 2) Intra multi-level nested SE logical operators map
+    void insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps(char const & callerId,
+    	rstring const & seId, rstring const & logicalOpFromCaller,
+    	int32 const & opCnt, int32 const & cpCnt,
+		SPL::map<rstring, rstring> const & insloMap,
+    	SPL::map<rstring, int32> & mlnsidMap,
+    	SPL::map<rstring, rstring> & imlnsidMap, boolean trace);
     // ====================================================================
 
 	// Evaluate a given expression.
@@ -660,7 +776,7 @@ namespace eval_predicate_functions {
 			// user provided tuple and display its attribute names and values.
 			traceTupleAtttributeNamesAndValues(myTuple, tupleAttributesMap, trace);
 
-			// This map's key is a subexpression id.
+			// SE map's key is a subexpression id.
 			// Subexpression id will go something like this:
 			// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
 			// Subexpression id is made of level 1 and level2.
@@ -697,6 +813,10 @@ namespace eval_predicate_functions {
 			// 1.1                                                                   1.2                          1.3
 			// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 			//
+	    	// In addition to the expressions shown above, there is a whole different category of
+	    	// deeply nested ones. To see them, you can search in this file for
+	    	// "multi-level nested subexpression examples".
+	    	//
 			// This map's value is a list that describes the composition of a given subexpression.
 			// Structure of such a list will go something like this:
 			// This list will have a sequence of rstring items as shown below.
@@ -719,6 +839,9 @@ namespace eval_predicate_functions {
 			// This list will have N-1 items where N is the total number of
 			// subexpressions stored in the map above.
 			SPL::list<rstring> interSubexpressionLogicalOperatorsList;
+			// Senthil added this on Sep/20/2023.
+			SPL::map<rstring, int32> multiLevelNestedSubExpressionIdMap;
+			SPL::map<rstring, rstring> intraMultiLevelNestedSubexpressionLogicalOperatorsMap;
 
 			// Let us validate the expression for correctness in its use of
 			// the correct tuple attributes and correct operation verbs.
@@ -730,10 +853,13 @@ namespace eval_predicate_functions {
 			// Perform the validation from the beginning of
 			// the expression starting at index 0.
 			int32 validationStartIdx = 0;
+			// Senthil added a new method argument on Sep/20/2023.
 			result = validateExpression(expr, tupleAttributesMap,
 				subexpressionsMap,
 				intraNestedSubexpressionLogicalOperatorsMap,
 				interSubexpressionLogicalOperatorsList,
+				multiLevelNestedSubExpressionIdMap,
+				intraMultiLevelNestedSubexpressionLogicalOperatorsMap,
 				error, validationStartIdx, trace);
 			SPLAPPTRC(L_TRACE, "End timing measurement 3", "ExpressionValidator");
 
@@ -772,6 +898,11 @@ namespace eval_predicate_functions {
 				intraNestedSubexpressionLogicalOperatorsMap);
 			evalPlanPtr->setInterSubexpressionLogicalOperatorsList(
 				interSubexpressionLogicalOperatorsList);
+			// Senthil added this on Sep/20/2023.
+			evalPlanPtr->setMultiLevelNestedSubExpressionIdMap(
+				multiLevelNestedSubExpressionIdMap);
+			evalPlanPtr->setIntraMultiLevelNestedSubexpressionLogicalOperatorsMap(
+				intraMultiLevelNestedSubexpressionLogicalOperatorsMap);
 
 			// Let us store it as a K/V pair in the map now.
 	        std::pair<ExpEvalCache::iterator, bool> cacheInsertResult =
@@ -1882,11 +2013,14 @@ namespace eval_predicate_functions {
 	// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
 	//
 	// Note: The space below between > > is a must. Otherwise, compiler will give an error.
+	// Senthil added a new method argument on Sep/20/2023.
     inline boolean validateExpression(rstring const & expr,
         SPL::map<rstring, rstring> const & tupleAttributesMap,
     	SPL::map<rstring, SPL::list<rstring> > & subexpressionsMap,
 		SPL::map<rstring, rstring> & intraNestedSubexpressionLogicalOperatorsMap,
     	SPL::list<rstring> & interSubexpressionLogicalOperatorsList,
+		SPL::map<rstring, int32> & multiLevelNestedSubExpressionIdMap,
+		SPL::map<rstring, rstring> & intraMultiLevelNestedSubexpressionLogicalOperatorsMap,
     	int32 & error, int32 & validationStartIdx, boolean trace=false) {
     	error = ALL_CLEAR;
 
@@ -2083,6 +2217,8 @@ namespace eval_predicate_functions {
     	int32 idx = 0;
     	int32 openParenthesisCnt = 0;
     	int32 closeParenthesisCnt = 0;
+    	// Senthil added this variable on Sep/20/2023.
+    	boolean openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression = false;
     	boolean lhsFound = false;
     	boolean lhsSubscriptForListAndMapAdded = false;
     	boolean operationVerbFound = false;
@@ -2092,13 +2228,20 @@ namespace eval_predicate_functions {
     	rstring mostRecentLogicalOperatorFound = "";
     	// It tells the number of parts in a multi-part subexpression.
     	int32 multiPartSubexpressionPartsCnt = 0;
+    	// Senthil added this on Sep/20/2023.
+    	// It tells the current nesting depth in a given nested subexpression.
+    	// Example rule:
+    	// ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || (((a.transport.plane.airliner equalsCI 'bOeInG') || (testId equalsCI 'Happy Path')) && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))
+    	int32 currentDepthOfNestedSubexpression = 0;
+
     	//
     	// Please note that this function receives a reference to a
     	// map as an argument where it will keep storing all the
     	// subexpressions we find. That map is an important one which
     	// acts as a structure describing the composition of the
     	// entire expression. Its structure is as explained here.
-    	// This map's key is a subexpression id.
+    	//
+    	// SE map's key is a subexpression id.
     	// Subexpression id will go something like this:
     	// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
     	// Subexpression id is made of level 1 and level 2.
@@ -2135,6 +2278,10 @@ namespace eval_predicate_functions {
     	// 1.1                                                                   1.2                          1.3
     	// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 		//
+    	// In addition to the expressions shown above, there is a whole different category of
+    	// deeply nested ones. To see them, you can search in this file for
+    	// "multi-level nested subexpression examples".
+    	//
     	// This map's value holds a list that describes the composition of a
     	// given subexpression. Structure of such a list will go something like this:
     	// This list will have a sequence of rstring items as shown below.
@@ -2156,6 +2303,7 @@ namespace eval_predicate_functions {
     	boolean lhsPrecededByOpenParenthesis = false;
     	boolean enclosedSingleSubexpressionFound = false;
     	boolean consecutiveCloseParenthesisFound = false;
+    	int32 openParenthesisCntForRecentlyProcessedLhs = 0;
 
     	/*
     	*********************************************************
@@ -2236,6 +2384,62 @@ namespace eval_predicate_functions {
 		c3) Insert the SELOL in subexpressionsMap (SEMAP).
 		c4) Clear SELOL and set multiPartSubexpressionPartsCnt = 0.
 		c5) Set the currentNestedSubexpressionLevel = 0.
+
+		4) This is the logic performed for processing multi-level
+		   nested subexpressions. It is a very involved one to
+		   handle this particular case. I added support for this
+		   on Sep/20/2023 based on a customer request. As the logic
+		   is complex to document here as an orderly sequence, it is
+		   recommended to look at the specific code changes made and
+		   the commentary surrounding it. This logic is mainly concentrated
+		   in the CP (Close Parenthesis) processing block below as well as
+		   in the methods such as the ones listed below.
+
+		   getNextSubexpressionId
+		   getNestedSubexpressionGroupInfo
+		   evaluateExpression
+		   insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps
+
+		   Please search for Sep/20/2023 in this file to get a broader
+		   understanding of how I handle the multi-level nested subexpressions.
+		   As always, I only tested half a dozen example expressions that include
+		   multi-level nested SEs. There will definitely be other forms
+		   of multi-level nested SEs that are not handled adequately.
+		   If that happens in the field, I will have to do more
+		   enhancements in the future as needed.
+
+		   A few multi-level nested subexpression examples are shown below.
+
+		   The following is a replica of the rule expression used in the field by a large customer.
+           ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))
+
+		   The following is done to swap the positions of the first and second parts of the rule shown above.
+		   (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))) && ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))
+
+		   The following is same as the first one except for one more || clause is added in the second part of the rule.
+		   ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || (((a.transport.plane.airliner equalsCI 'bOeInG') || (testId equalsCI 'Happy Path')) && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))
+
+		   The following is after the removal of the extra open and close parenthesis to make it simpler.
+		   (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))
+
+		   The following is same as the above except for one more || clause is added in the second part of the rule.
+		   (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG' || testId equalsCI 'Happy Path') && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari'))
+
+		   Example expressions shown above will result inside a SELO (SubExpressionLayOut) map with
+		   keys that will look something like this: "1.1", "2.1", "2.2.1", "2.2.2.1" and so on. You can
+		   refer to the getNextSubexpressionId method about how the id generation happens for
+		   deeply nested subexpressions.
+
+		   Below is another example of how a multi-level nested SE will look like:
+
+           NestedSubexpressionId="2.1", Logical operator="||"
+           NestedSubexpressionId="2.2.1", Logical operator="&&"
+           NestedSubexpressionId="2.2.1.2", Logical operator="&&"
+           NestedSubexpressionId="2.2.1.2.3", Logical operator="||"
+           NestedSubexpressionId="2.2.1.2.4.1", Logical operator="||"
+
+           Test cases covering the multi-level nested subexpressions can be found in the
+           EvalPredicateExample.spl (3.7 to 3.12) and FunctionalTests.spl (A51.1 to A51.20).
     	*********************************************************
     	*/
 
@@ -2326,7 +2530,7 @@ namespace eval_predicate_functions {
 
 					if(selolSize == 0) {
 						// This subexpression processing has to continue before
-						// we can continue further steps related to the
+						// we can perform further steps related to the
 						// nested subexpressions.
 						// This may turn out to be an enclosed single subexpression when
 						// after the full subexpression is parsed. Let us reset this flag now.
@@ -2334,21 +2538,121 @@ namespace eval_predicate_functions {
 						break;
 					}
 
+					boolean breakFromOpenParenthesisProcessingWhileLoopIfNeeded = true;
+
+					// There are special cases such as the A51.20 test case in
+					// FunctionalTests.spl will have a reason for us to meet the
+					// condition in this if block.
+					if((subexpressionId == "") && ((idx > 0) && (myBlob[idx-1] == '('))) {
+						// If we get inside this if block, then we have met these conditions.
+						// selol size is non-zero.
+						// We encountered a new OP.
+						// SE Id is an empty string.
+						// That means, we already completed validating
+						// the very first SE in the full expression.
+						// Since we also passed the test for finding the
+						// previous character as another OP, it is an indication
+						// that there is a new nested SE starting right after the
+						// entire expression's very first SE that we just now
+						// validated. In this case, let us not break from the
+						// OP processing white loop so that it can continue to
+						// create the very first SE id of this entire expression as
+						// 1.1 right here in this iteration of the OP processing while loop.
+						// So, let us not give a chance for the next if-block to
+						// break from the OP processing based on that if block's
+						// conditional check result.
+						//
+						breakFromOpenParenthesisProcessingWhileLoopIfNeeded = false;
+					}
+
+					// See if the OP we are now sitting at is for an enclosed SE.
+					boolean isCurrentOpenParenthesisForAnEnclosedSE =
+						isThisAnEnclosedSingleSubexpression(expr, idx);
+
 					// If we are observing a sequence of enclosed single subexpressions,
-					// then we have no further step to perform at this time.
+					// then we have no further step to perform at this time in this OP processing block.
 					// e-g: // (a == "hi") && ((b contains "xyz") || (g[4] > 6.7) || (id % 8 == 3))
 					if(enclosedSingleSubexpressionFound == true) {
-						// Reset this flag now.
+						// This tells us that the previously processed SE was an
+						// enclosed single SE. Reset this flag now.
 						enclosedSingleSubexpressionFound = false;;
 
 						// Do a quick and special look ahead test to see if the
 						// current subexpression that we are just about to
 						// process is also an enclosed single subexpression.
 						// If yes, then there is a sequence of them.
-						if(isThisAnEnclosedSingleSubexpression(expr, idx) == true) {
+						// Senthil changed the following statement on Sep/20/2023.
+						if(isCurrentOpenParenthesisForAnEnclosedSE == true &&
+							breakFromOpenParenthesisProcessingWhileLoopIfNeeded == true) {
+			    			// Senthil added this block of code on Sep/20/2023.
+			    			// We are processing this OP after encountering an
+							// enclosed single SE earlier. It appears that the
+							// current OP is also enclosing a single SE.
+							// It is very likely that we are seeing a sequence of
+							// enclosed single SEs as shown in the example above.
+							// So, it is safe to break from the while loop that
+							// contains the OP processing logic for the rest of
+							// lhs, op-verb, rhs etc. in this enclosed
+							// single SE to happen. A good example for this is
+							// test case 3.9 in the EvalPredicateExample.spl file.
+							if(trace == true) {
+								cout << "_HHHHH_01 After detecting an enclosed single SE, " <<
+									"we are breaking from the OP processing while loop." <<
+									" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+									", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+									", selolSize=" << selolSize <<
+									", isCurrentOpenParenthesisForAnEnclosedSE=" << isCurrentOpenParenthesisForAnEnclosedSE <<
+									", breakFromOpenParenthesisProcessingWhileLoopIfNeeded=" <<
+									breakFromOpenParenthesisProcessingWhileLoopIfNeeded <<
+									", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+									openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+									", openParenthesisCnt=" << openParenthesisCnt <<
+									", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+							}
+
 							// Let this enclosed single subexpression chain continue.
-							// We have no other step to perform now.
+							// We have no other OP step to perform now.
 							break;
+						}
+					}
+
+					// This flag when set to true will make the logic below to
+					// create a new SE Id in the x.y two level naming format.
+					boolean getTwoLevelsForNextSeId = false;
+
+					if(openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression == true) {
+						// Since the previously processed SE fully completed with an OP and CP match,
+						// the very next SE must start with a new two level (x.y formatted) SE Id when
+						// it will get created in the logic below in this OP processing block.
+
+						// We can reset this flag as it has no purpose after
+						// we move past the very first SE within a given nested SE.
+						// Since the subexpression layout list is not empty, it indicates that
+						// at the very least the first SE within that nested SE is already completed.
+						openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression = false;
+
+						// This is to handle a rule such as test case 3.8 in the EvalPredicateExample.spl file.
+						// That rule has the very first SE ID completed with an id of 1.1. Immediately after that,
+						// it is followed with (rank == 5 && (...
+						// In this case, rank == 5 is not enclosed within parenthesis. We should make sure that
+						// it gets an id of 2.1 in x.y two level format.
+						//
+						// Let us set this to true so that, it will properly get assigned an x.y formatted id.
+						getTwoLevelsForNextSeId = true;
+
+						if(trace == true) {
+							cout << "_HHHHH_02 Inside the OP processing block where it is " <<
+								"handling a nested SE logic. currentNestedSubexpressionLevel=" <<
+								currentNestedSubexpressionLevel <<
+								", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+								". openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression is set to false." <<
+								" selolSize=" << selolSize <<
+								", isCurrentOpenParenthesisForAnEnclosedSE=" << isCurrentOpenParenthesisForAnEnclosedSE <<
+								", breakFromOpenParenthesisProcessingWhileLoopIfNeeded=" <<
+								breakFromOpenParenthesisProcessingWhileLoopIfNeeded <<
+								", getTwoLevelsForNextSeId=" << getTwoLevelsForNextSeId <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
 						}
 					}
 
@@ -2358,23 +2662,87 @@ namespace eval_predicate_functions {
 						subexpressionLayoutList[selolSize - 1];
 					// We are going to declare the end of this nested subexpression.
 					subexpressionLayoutList[selolSize - 1] = "";
+
+					// Test cases such as A51.19 and A51.20 in FunctionalTests.spl will make it to
+					// go via this part of the OP processing logic.
+					if(trace == true) {
+						cout << "_HHHHH_03 Inside the OP processing block just before getting " <<
+							"a new SE ID. logicalOperator=" << logicalOperator <<
+							", currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+							", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+							", selolSize=" << selolSize <<
+							", isCurrentOpenParenthesisForAnEnclosedSE=" << isCurrentOpenParenthesisForAnEnclosedSE <<
+							", breakFromOpenParenthesisProcessingWhileLoopIfNeeded=" <<
+							breakFromOpenParenthesisProcessingWhileLoopIfNeeded <<
+							", getTwoLevelsForNextSeId=" << getTwoLevelsForNextSeId <<
+							", openParenthesisCnt=" << openParenthesisCnt <<
+							", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+					}
+
 					// Get a new id for this nested subexpression.
 					// e-g: 2.3
 					// Please note that we want a new id for the previously
 					// parsed and validated nested subexpression.
 					// So, remember to reduce the nested level by one to
 					// refer to the subexpression that just got processed.
-					getNextSubexpressionId(currentNestedSubexpressionLevel - 1,
-						subexpressionId);
+					//
+					// Senthil modified this logic on Sep/20/2023.
+					// There may be expressions that can have multi-level nested
+					// expressions right at the very beginning as shown below.
+					// (a.transport.plane.airliner equalsCI 'bOeInG' && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari' || (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2'))) && (( ...
+					// Expression shown above is very different from a non-multi-level nested expression such as the ones shown below.
+					// (a == "hi") && (b contains "xyz" || g[4] > 6.7 || id % 8 == 3)
+					// (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
+					// If it is a multi-level nested expression, then we have to call the following
+					// method in such a way to get an SE ID that follows the format x.y.z instead of x.y.
+					//
+					// You can refer to A51.19 and A51.20 test cases in FunctionalTests.spl file to
+					// see how the following if-else condition will work for the very first part of the
+					// subexpression in those two test cases.
+					//
+					if(subexpressionId == "" || getTwoLevelsForNextSeId == true ||
+						(((openParenthesisCnt - closeParenthesisCnt) <= 1) && closeParenthesisCnt > 0)) {
+						// If the SE ID is an empty string which is the very first initialized value or
+						// if we have already seen any form of a closed SE or if the logic above
+						// made a decision to take this if branch via the get two levels seId flag,
+						// then we can can get an SE id in the x.y format.
+						getNextSubexpressionId('A', currentNestedSubexpressionLevel - 1,
+							subexpressionId, currentDepthOfNestedSubexpression, trace);
+					} else {
+						// This is a multi-level nested expression.
+						// This will cover the case of (SE Id not being an
+						// empty string and CP count being 0) as well as
+						// the case of (SE id not being an empty string and
+						// OP-CP > 1).
+						// We have to get an SE id in x.y.z format.
+						// Passing a value of 3 for the current nested SE level will force the
+						// called method to compute and return us an ID in x.y.z format.
+						currentDepthOfNestedSubexpression++;
+						getNextSubexpressionId('F', 3,
+							subexpressionId, currentDepthOfNestedSubexpression, trace);
+					}
+
 					// Insert the SELOL into the SEMAP now using the new id.
 					Functions::Collections::insertM(subexpressionsMap,
 						subexpressionId, subexpressionLayoutList);
 					// Insert the saved logical operator value into its own map.
 					Functions::Collections::insertM(intraNestedSubexpressionLogicalOperatorsMap,
 						subexpressionId, logicalOperator);
+					// If we obtained a new multi-level nested SE id in the logic above,
+					// we will insert into a few relevant maps that will come handy
+					// later during the expression evaluation.
+					// Note that we are sending the OP count for the most recently
+					// processed LHS. If we send a single-level nested SE Id to this
+					// method, no harm done and that method will return without doing any work.
+					insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps('M', subexpressionId,
+						logicalOperator, openParenthesisCntForRecentlyProcessedLhs,
+						closeParenthesisCnt, intraNestedSubexpressionLogicalOperatorsMap,
+						multiLevelNestedSubExpressionIdMap,
+						intraMultiLevelNestedSubexpressionLogicalOperatorsMap, trace);
 					// Reset the ones below.
 					Functions::Collections::clearM(subexpressionLayoutList);
 					multiPartSubexpressionPartsCnt = 0;
+					getTwoLevelsForNextSeId = false;
 					// We must be in this loop only for one iteration.
 					break;
     			} // End of while(true)
@@ -2421,6 +2789,27 @@ namespace eval_predicate_functions {
     			while(true) {
     				if(currentNestedSubexpressionLevel == 0) {
     					// We are not in a nested expression.
+
+    			    	// Senthil added this on Sep/20/2023.
+    					// This is a self enclosed, non-nested SE.
+    			    	// If it is a OP and CP count match, then it is
+    					// a self-enclosed, non-nested SE. In that case,
+    					// set the following flag to true.
+    					// Refer to the very first SE that starts this example expression.
+    					// (stats.numberOfSchools == 8) && ((rank==5) || (roadwayNumbers contains 120) || (housingNumbers['Condo'] >= 80))
+    					//
+    					if(openParenthesisCnt == closeParenthesisCnt) {
+    						openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression = true;
+
+    						if(trace == true) {
+    							cout << "_HHHHH_04 Inside the CP processing block where " <<
+									"OP and CP counts are found equal. So " <<
+									"openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression is set to true." <<
+									", openParenthesisCnt=" << openParenthesisCnt <<
+									", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+    						}
+    					}
+
     					break;
     				}
 
@@ -2448,6 +2837,9 @@ namespace eval_predicate_functions {
     						break;
     					}
 
+    					// Senthil added a second conditional check in
+    					// this if block on Sep/20/2023. It is needed to
+    					// handle multi-level nested subexpressions in a better way.
     					if(lhsPrecededByOpenParenthesis == true &&
     						consecutiveCloseParenthesisFound == false) {
     						// A presence of CP like this means that the
@@ -2460,8 +2852,34 @@ namespace eval_predicate_functions {
     						currentNestedSubexpressionLevel = 0;
     						// Set this flag to say that it is an enclosed single SE.
     						enclosedSingleSubexpressionFound = true;
+
+    						if(trace == true) {
+    							cout << "_HHHHH_05 Inside the CP processing block where " <<
+									"OP and CP counts are not equal with non consecutive CP. So " <<
+    								"currentNestedSubexpressionLevel is set to 0 and " <<
+									"enclosedSingleSubexpressionFound is set to true." <<
+									" openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+									openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+									", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+									", openParenthesisCnt=" << openParenthesisCnt <<
+									", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+    						}
+
     						break;
     					} else {
+    						if(trace == true) {
+    							cout << "_HHHHH_06 Inside the CP processing block. Start of " <<
+    								"the logic in the else block " <<
+									"for OP and CP count not matching." <<
+									" openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+									openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+									", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+									", selolSize=" << selolSize <<
+									", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+									", openParenthesisCnt=" << openParenthesisCnt <<
+									", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+    						}
+
     						// This CP is not happening for a single SE enclosure.
     						// Instead, it is happening at the end of a
     						// nested subexpression.
@@ -2482,17 +2900,110 @@ namespace eval_predicate_functions {
 								// higher than 1 so that it will get the proper
 								// nested subexpression id.
 								if(consecutiveCloseParenthesisFound == true) {
+									// Senthil added this on Sep/20/2023.
+									// This condition indicates that we are at the end of
+									// of the subexpressions within a nested subexpression.
+									currentDepthOfNestedSubexpression++;
+
 									// It must be any number higher than 1.
-									nestedLevel = 2;
+									// Senthil added this if condition on Sep/20/2023.
+									if(openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression == true) {
+										// This indicates that previously processed SE had matching OP and CP.
+										// This will make the helper method to get next SE id to
+										// increment the level 1 of the SE id by one.
+										nestedLevel = 2;
+
+										if(trace == true) {
+											cout << "_HHHHH_07 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+												"is found as true and hence setting nestedLevel to 2." <<
+												" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+												", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+												openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+												", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+												", selolSize=" << selolSize <<
+												", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+												", openParenthesisCnt=" << openParenthesisCnt <<
+												", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+										}
+									} else {
+										// This indicates that we are in more than one level
+										// deep within the current SE whose CP we are processing here.
+										// In this case, our helper method to get next SE id will
+										// add a new final level that carries the value of the
+										// current depth of this nested SE.
+										// e-g: 2.1.2 (OR) 2.3.1.2 (OR) 4.2.1.3.5
+										nestedLevel = 3;
+
+										if(trace == true) {
+											cout << "_HHHHH_08 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+												"is found as false and hence setting nestedLevel to 3." <<
+												" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+												", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+												openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+												", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+												", selolSize=" << selolSize <<
+												", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+												", openParenthesisCnt=" << openParenthesisCnt <<
+												", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+										}
+									}
+								} else {
+									if(trace == true) {
+										cout << "_HHHHH_09 Inside the CP processing block. " <<
+											"Entering the else block for the non " <<
+											"consecutive CP condition." <<
+											" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+											", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+											openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+											", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+											", selolSize=" << selolSize <<
+											", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+											", openParenthesisCnt=" << openParenthesisCnt <<
+											", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+									}
+
+									// Senthil added this else block on Sep/20/2023.
+									// We are here after finding no consecutive CPs i.e.
+									// we only have found a single CP in this case but
+									// with a nested SE.
+									// If the nested level is greater than 1, we are
+									// already inside a multi-level nested SE. Let us
+									// set the nested level to 3 in this case for it
+									// to get the same level 1 SE id as it currently
+									// exists and with different values for other levels
+									// in the SE id.
+									if(nestedLevel > 1) {
+										nestedLevel = 3;
+										currentDepthOfNestedSubexpression++;
+
+										if(trace == true) {
+											cout << "_HHHHH_10 nested level is set to 3." <<
+												" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+												", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+												openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+												", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+												", selolSize=" << selolSize <<
+												", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+												", openParenthesisCnt=" << openParenthesisCnt <<
+												", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+										}
+									}
 								}
 
-								getNextSubexpressionId(nestedLevel, subexpressionId);
+								getNextSubexpressionId('B', nestedLevel, subexpressionId,
+									currentDepthOfNestedSubexpression, trace);
 								// Insert the SELOL into the SEMAP now using the new id.
 								Functions::Collections::insertM(subexpressionsMap,
 									subexpressionId, subexpressionLayoutList);
 								// Reset the ones below.
 								Functions::Collections::clearM(subexpressionLayoutList);
         					}
+
+        					// Senthil added this statement on Sep/20/2023.
+        			    	// Since it is an unequal open and close parenthesis count, reset this for now.
+        			    	// It can only be set to true in an equal open and
+        			    	// close parenthesis count processing block later in this method.
+        			    	openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression = false;
 
 							multiPartSubexpressionPartsCnt = 0;
 							enclosedSingleSubexpressionFound = false;
@@ -2506,9 +3017,124 @@ namespace eval_predicate_functions {
     						currentNestedSubexpressionLevel++;
     					}
 
+						if(trace == true) {
+							cout << "_HHHHH_11 Inside the CP processing block. Start of the " <<
+								"logic for the matching OP and CP count. " <<
+								"lhsPrecededByOpenParenthesis=" <<
+								lhsPrecededByOpenParenthesis <<
+								", currentNestedSubexpressionLevel=" <<
+								currentNestedSubexpressionLevel <<
+								", selolSize=" << selolSize <<
+								", consecutiveCloseParenthesisFound=" <<
+								consecutiveCloseParenthesisFound <<
+								", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+								openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+								", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
+
     					// If SELOL is not empty, we can complete the current
     					// nested subexpression where this CP is at now.
     					if(selolSize > 0) {
+    						// Senthil added this logic on Sep/20/2023.
+    						// Calculate the current depth of the nested SE if it is present.
+							int32 nestedLevel = currentNestedSubexpressionLevel;
+
+							// If we have a consecutive CP situation, then we will
+							// make the nested level to arbitrary number that is
+							// higher than 1 so that it will get the proper
+							// nested subexpression id.
+							if(consecutiveCloseParenthesisFound == true) {
+								// Senthil added this on Sep/20/2023.
+								// This condition indicates that we are at the end of
+								// of the subexpressions within a nested subexpression.
+								currentDepthOfNestedSubexpression++;
+
+								// It must be any number higher than 1.
+								// Senthil added this if condition on Sep/20/2023.
+								if(openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression == true) {
+									// This indicates that previously processed SE had matching OP and CP.
+									// This will make the helper method to get next SE id to
+									// increment the level 1 of the SE id by one.
+									nestedLevel = 2;
+
+									if(trace == true) {
+										cout << "_HHHHH_12 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+											"is found as true and hence setting nestedLevel to 2." <<
+											" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+											", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+											openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+											", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+											", selolSize=" << selolSize <<
+											", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+											", openParenthesisCnt=" << openParenthesisCnt <<
+											", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+									}
+								} else {
+									// This indicates that we are in more than one level
+									// deep within the current SE whose CP we are processing here.
+									// I nthis case, our helper method to get next SE id will
+									// add a new final level that carries the value of the
+									// current depth of this nested SE.
+									// e-g: 2.1.2 (OR) 2.3.1.2 (OR) 4.2.1.3.5
+									nestedLevel = 3;
+
+									if(trace == true) {
+										cout << "_HHHHH_13 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+											"is found as false and hence setting nestedLevel to 3." <<
+											" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+											", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+											openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+											", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+											", selolSize=" << selolSize <<
+											", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+											", openParenthesisCnt=" << openParenthesisCnt <<
+											", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+									}
+								}
+							} else {
+								if(trace == true) {
+									cout << "_HHHHH_14 Inside the CP processing block. " <<
+										"Entering the else block for the non " <<
+										"consecutive CP condition." <<
+										" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+										", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+										openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+										", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+										", selolSize=" << selolSize <<
+										", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+										", openParenthesisCnt=" << openParenthesisCnt <<
+										", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+								}
+
+								// Senthil added this else block on Sep/20/2023.
+								// We are here after finding no consecutive CPs i.e.
+								// we only have found a single CP in this case but
+								// with a nested SE.
+								// If the nested level is greater than 1, we are
+								// already inside a multi-level nested SE. Let us
+								// set the nested level to 3 in this case for it
+								// to get the same level 1 SE id as it currently
+								// exists and with different values for other levels
+								// in the SE id.
+								if(nestedLevel > 1) {
+									nestedLevel = 3;
+									currentDepthOfNestedSubexpression++;
+
+									if(trace == true) {
+										cout << "_HHHHH_15 nested level is set to 3." <<
+											" openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+											openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+											", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+											", selolSize=" << selolSize <<
+											", consecutiveCloseParenthesisFound=" << consecutiveCloseParenthesisFound <<
+											", openParenthesisCnt=" << openParenthesisCnt <<
+											", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+									}
+								}
+							}
+
 							// Let us append an empty string in the logical operator
 							// slot of the subexpression layout list for that last
 							// completed nested subexpression.
@@ -2516,14 +3142,13 @@ namespace eval_predicate_functions {
 							Functions::Collections::appendM(subexpressionLayoutList, str);
 							// Get a new id for this processed nested subexpression.
 							// e-g: 2.3
-							getNextSubexpressionId(currentNestedSubexpressionLevel,
-								subexpressionId);
+							getNextSubexpressionId('C', nestedLevel, subexpressionId,
+								currentDepthOfNestedSubexpression, trace);
 							// Insert the SELOL into the SEMAP now using the new id.
 							Functions::Collections::insertM(subexpressionsMap,
 								subexpressionId, subexpressionLayoutList);
 							// Reset the ones below.
 							Functions::Collections::clearM(subexpressionLayoutList);
-							multiPartSubexpressionPartsCnt = 0;
     					}
 
     					multiPartSubexpressionPartsCnt = 0;
@@ -2531,6 +3156,14 @@ namespace eval_predicate_functions {
     					currentNestedSubexpressionLevel = 0;
     					// Just because OP == CP now, we can reset this flag.
     					consecutiveCloseParenthesisFound = false;
+    			    	// Senthil added this on Sep/20/2023.
+    					// Since we reset the consecutive CP in the previous
+    					// statement, we are no longer within a nested SE.
+    					// We can reset the following as well.
+    			    	currentDepthOfNestedSubexpression = 0;
+    			    	// Senthil added this on Sep/20/2023.
+    			    	// Since it is a OP and CP count match, set this to true.
+    			    	openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression = true;
     					break;
     				} // End of the (OP != CP) if block.
 
@@ -2890,6 +3523,9 @@ namespace eval_predicate_functions {
 							SPL::map<rstring, SPL::list<rstring> > lotSubexpressionsMap;
 							SPL::map<rstring, rstring> lotIntraNestedSubexpressionLogicalOperatorsMap;
 							SPL::list<rstring> lotInterSubexpressionLogicalOperatorsList;
+							// Senthil added this on Sep/20/2023.
+							SPL::map<rstring, int32> lotMultiLevelNestedSubExpressionIdMap;
+							SPL::map<rstring, rstring> lotIntraMultiLevelNestedSubexpressionLogicalOperatorsMap;
 							// It is a recursive call. So, we can tell this method to
 							// start the validation at a specific position in the
 							// expression instead of from index 0. It can be done by
@@ -2900,9 +3536,12 @@ namespace eval_predicate_functions {
 							// use at the end of this additional processing we are
 							// doing here for a list<TUPLE>.
 							int32 lotExpressionStartIdx = idx;
+							// Senthil added a new method argument on Sep/20/2023.
 							lotResult = validateExpression(expr, lotTupleAttributesMap,
 								lotSubexpressionsMap, lotIntraNestedSubexpressionLogicalOperatorsMap,
-								lotInterSubexpressionLogicalOperatorsList, error,
+								lotInterSubexpressionLogicalOperatorsList,
+								lotMultiLevelNestedSubExpressionIdMap,
+								lotIntraMultiLevelNestedSubexpressionLogicalOperatorsMap, error,
 								validationStartIdx, trace);
 
 							if(trace == true) {
@@ -3366,6 +4005,14 @@ namespace eval_predicate_functions {
 
 					cout << "==== END eval_predicate trace 6a ====" << endl;
 				} // End of if(trace == true)
+
+				// Set the open parenthesis count for the LHS that just now got processed.
+				// This will come handy in the OP processing block when
+				// we call another method to store the
+				// multi-level nested SE Id and intra multi-level nested SE Id's
+				// logical operator into specific maps. Search for 'A' or 'F'
+				// in the OP processing block to see how this variable gets used.
+				openParenthesisCntForRecentlyProcessedLhs = openParenthesisCnt;
 
 				// Continue with the main while loop.
 				continue;
@@ -4690,6 +5337,28 @@ namespace eval_predicate_functions {
     			if(openParenthesisCnt != closeParenthesisCnt &&
     				multiPartSubexpressionPartsCnt > 0 &&
     				mostRecentLogicalOperatorFound != logicalOperatorUsedWithinSubexpression) {
+					if(trace == true) {
+						cout << "_HHHHH_16 Inside the logical operator processing block, " <<
+							"a mixed set of logical operators are found. " <<
+							"SE ID=" << subexpressionId << ", selolSize=" << selolSize <<
+							", logicalOperatorUsedWithinSubexpression=" <<
+							logicalOperatorUsedWithinSubexpression <<
+							", mostRecentLogicalOperatorFound=" <<
+							mostRecentLogicalOperatorFound <<
+							", currentNestedSubexpressionLevel=" <<
+							currentNestedSubexpressionLevel <<
+							", consecutiveCloseParenthesisFound=" <<
+							consecutiveCloseParenthesisFound <<
+							", multiPartSubexpressionPartsCnt=" <<
+							multiPartSubexpressionPartsCnt <<
+							", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+							openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+							", currentDepthOfNestedSubexpression=" <<
+							currentDepthOfNestedSubexpression <<
+							", openParenthesisCnt=" << openParenthesisCnt <<
+							", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+					}
+
     				// We can't allow mixing of logical operators within a subexpression.
     				error = MIXED_LOGICAL_OPERATORS_FOUND_IN_SUBEXPRESSION;
     				return(false);
@@ -4708,6 +5377,7 @@ namespace eval_predicate_functions {
     			operationVerbFound = false;
     			rhsFound = false;
     			lhsPrecededByOpenParenthesis = false;
+
     			// Set this flag to indicate where we are now.
     			logicalOperatorFound = true;
 				int32 selolSize =
@@ -4728,23 +5398,47 @@ namespace eval_predicate_functions {
     	    	// ...   - The sequence above repeats for this subexpression.
     	    	//
     			if(openParenthesisCnt != closeParenthesisCnt) {
-    				// Do a special step for assisting with the
-    				// processing of nested subexpressions.
-    				// There are two either this or that conditions in this if block.
-    				// In my tests, I found out that the first condition itself
-    				// is sufficient. The second condition to check for the
-    				// presence of consecutive CP is redundant. At a later time,
-    				// we can test with more nested expressions to confirm this
-    				// and then remove the second condition altogether.
-    				// For now, having it here causes no harm.
-    				if((currentNestedSubexpressionLevel > 0 && selolSize == 0) ||
-    					(consecutiveCloseParenthesisFound == true)){
+    				// First part of this if condition checks to see if we are in the
+    				// beginning of a (lhs opverb rhs) component that appears in
+    				// positions 2 or higher inside a nested subexpression.
+    				// Second part of this if condition checks to see if we
+    				// reached the outside of a fully completed subexpression.
+    				if(currentNestedSubexpressionLevel > 0 && selolSize == 0) {
 						// Insert the logical operator value into a separate map where
-    					// the intra nested subexpression logical operators are kept.
+						// the intra nested subexpression logical operators are kept.
+						// We will do this only when we see non-consecutive Close Parenthesis.
 						Functions::Collections::insertM(intraNestedSubexpressionLogicalOperatorsMap,
 							subexpressionId, mostRecentLogicalOperatorFound);
-						multiPartSubexpressionPartsCnt = 0;
-						consecutiveCloseParenthesisFound = false;
+
+						if(trace == true) {
+							cout << "_HHHHH_17 Added a logical operator into the " <<
+								"intraNestedSubexpressionLogicalOperatorsMap. SE ID=" <<
+								subexpressionId << ", selolSize=" << selolSize <<
+								", Logical Operator=" <<
+								mostRecentLogicalOperatorFound <<
+								", currentNestedSubexpressionLevel=" <<
+								currentNestedSubexpressionLevel <<
+								", consecutiveCloseParenthesisFound=" <<
+								consecutiveCloseParenthesisFound <<
+								", multiPartSubexpressionPartsCnt=" <<
+								multiPartSubexpressionPartsCnt <<
+								", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+								openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+								", currentDepthOfNestedSubexpression=" <<
+								currentDepthOfNestedSubexpression <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
+
+    			    	// Senthil added this on Sep/20/2023.
+    					// Since we reset the consecutive CP in the previous
+    					// statement, we are no longer within a nested SE.
+    					// We can reset the following as well.
+						if(consecutiveCloseParenthesisFound == true) {
+							multiPartSubexpressionPartsCnt = 0;
+							consecutiveCloseParenthesisFound = false;
+							currentDepthOfNestedSubexpression = 0;
+						}
     				} else {
 						// We are still within the same subexpression.
 						// Append the current intra subexpression logical operator we just found.
@@ -4758,12 +5452,55 @@ namespace eval_predicate_functions {
 							mostRecentLogicalOperatorFound);
 						// Increment the parts count for this multi-part subexpression.
 						multiPartSubexpressionPartsCnt++;
+
+						if(trace == true) {
+							cout << "_HHHHH_18 Added a logical operator into the " <<
+								"subexpressionLayoutList. SE ID=" <<
+								subexpressionId << ", selolSize=" << selolSize <<
+								", Logical Operator=" <<
+								mostRecentLogicalOperatorFound <<
+								", currentNestedSubexpressionLevel=" <<
+								currentNestedSubexpressionLevel <<
+								", consecutiveCloseParenthesisFound=" <<
+								consecutiveCloseParenthesisFound <<
+								", multiPartSubexpressionPartsCnt=" <<
+								multiPartSubexpressionPartsCnt <<
+								", currentDepthOfNestedSubexpression=" <<
+								currentDepthOfNestedSubexpression <<
+								", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+								openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
     				}
     			} else {
+    				// We will reach here when OP count and CP count have the same value.
+    				// It indicates that we are positioned right after a completed subexpression.
+    				//
 					// We can now add this inter subexpression logical separator to
     				// the list where we will keep them for later use.
     				Functions::Collections::appendM(interSubexpressionLogicalOperatorsList,
     					mostRecentLogicalOperatorFound);
+
+					if(trace == true) {
+						cout << "_HHHHH_19 Added a logical operator into the " <<
+							"interSubexpressionLogicalOperatorsList. SE ID=" <<
+							subexpressionId << ", selolSize=" << selolSize <<
+							", Logical Operator=" <<
+							mostRecentLogicalOperatorFound <<
+							", currentNestedSubexpressionLevel=" <<
+							currentNestedSubexpressionLevel <<
+							", consecutiveCloseParenthesisFound=" <<
+							consecutiveCloseParenthesisFound <<
+							", multiPartSubexpressionPartsCnt=" <<
+							multiPartSubexpressionPartsCnt <<
+							", currentDepthOfNestedSubexpression=" <<
+							currentDepthOfNestedSubexpression <<
+							", openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression=" <<
+							openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression <<
+							", openParenthesisCnt=" << openParenthesisCnt <<
+							", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+					}
 
     				// We are now just outside of a subexpression that was processed
     				// completely. The next one will be a new subexpression.
@@ -4784,7 +5521,8 @@ namespace eval_predicate_functions {
 	    		    	// Let us get a map key now (e-g: 1.1, 4.1 etc.)
 	    				// First argument 0 indicates that it is not a
 	    				// nested subexpression that just got processed.
-	    				getNextSubexpressionId(0, subexpressionId);
+	    				getNextSubexpressionId('D', 0, subexpressionId,
+							currentDepthOfNestedSubexpression, trace);
 	    		    	Functions::Collections::insertM(subexpressionsMap,
 	    		    		subexpressionId, subexpressionLayoutList);
 	    		    	// We can clear the subexpression layout list now to
@@ -4796,7 +5534,18 @@ namespace eval_predicate_functions {
     		    	multiPartSubexpressionPartsCnt = 0;
     		    	// Reset this value just as a safety measure.
     		    	currentNestedSubexpressionLevel = 0;
+    		    	currentDepthOfNestedSubexpression = 0;
     			}
+
+				// If it is a multi-level nested SE id, we will insert into a
+				// few relevant maps that will come handy later during the expression evaluation.
+				// Note that we are sending the OP count for the most recently
+				// processed LHS.
+				insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps('N', subexpressionId,
+					mostRecentLogicalOperatorFound, openParenthesisCntForRecentlyProcessedLhs,
+					closeParenthesisCnt, intraNestedSubexpressionLogicalOperatorsMap,
+					multiLevelNestedSubExpressionIdMap,
+					intraMultiLevelNestedSubexpressionLogicalOperatorsMap, trace);
 
     			// We have to ensure that the interSubexpressionLogicalOperatorsList
     			// contains a homogeneous set of logical operators.
@@ -4907,10 +5656,11 @@ namespace eval_predicate_functions {
     		// no other characters.
     		error = EXPRESSION_WITH_NO_LHS_AND_OPERATION_VERB_AND_RHS;
     	} else if(lhsFound == true && operationVerbFound == true && rhsFound == true) {
-    		// There is no sub-expression processing still pending.
+    		// There is no more sub-expression processing still pending.
     		// This means there was no logical operator after the finally
     		// validated sub-expression and hence we have these three flags set to
-    		// true. This represents a clean expression validation.
+    		// true. This represents a clean expression validation at the very end of
+    		// the given rule string.
     		error = ALL_CLEAR;
 
     		// Is there a pending subexpression layout list that
@@ -4918,8 +5668,101 @@ namespace eval_predicate_functions {
     		// This is usually the case when the very last
     		// subexpression is a non-nested one.
     		if(Functions::Collections::size(subexpressionLayoutList) > 0) {
+				if(trace == true) {
+					cout << "_HHHHH_20 Start of logic after the entire " <<
+						"expression is validated and a pending SELOL is " <<
+						"about to be stored in an SE map." <<
+						" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+						", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+						", openParenthesisCnt=" << openParenthesisCnt <<
+						", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+				}
+
 				// Since it is the very final subexpression processed,
 				// we have to add it to the subexpression map.
+    			//
+				// Senthil added this logic on Sep/20/2023.
+				// Calculate the current depth of the nested SE if it is present.
+				int32 nestedLevel = currentNestedSubexpressionLevel;
+
+				// If we have a consecutive CP situation, then we will
+				// make the nested level to arbitrary number that is
+				// higher than 1 so that it will get the proper
+				// nested subexpression id.
+				if(consecutiveCloseParenthesisFound == true) {
+					// Senthil added this on Sep/20/2023.
+					// This condition indicates that we are at the end of
+					// of the subexpressions within a nested subexpression.
+					currentDepthOfNestedSubexpression++;
+
+					// It must be any number higher than 1.
+					// Senthil added this if condition on Sep/20/2023.
+					if(openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression == true) {
+						// This indicates that previously processed SE had matching OP and CP.
+						// This will make the helper method to get next SE id to
+						// increment the level 1 of the SE id by one.
+						nestedLevel = 2;
+
+						if(trace == true) {
+							cout << "_HHHHH_21 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+								"is found as true and hence setting nestedLevel to 2." <<
+								" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+								", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
+					} else {
+						// This indicates that we are in more than one level
+						// deep within the current SE whose CP we are processing here.
+						// I nthis case, our helper method to get next SE id will
+						// add a new final level that carries the value of the
+						// current depth of this nested SE.
+						// e-g: 2.1.2 (OR) 2.3.1.2 (OR) 4.2.1.3.5
+						nestedLevel = 3;
+
+						if(trace == true) {
+							cout << "_HHHHH_22 openCloseParenthesisCntMatchedInPreviouslyProcessedSubExpression " <<
+								"is found as false and hence setting nestedLevel to 3." <<
+								" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+								", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
+					}
+				} else {
+					if(trace == true) {
+						cout << "_HHHHH_23 Entering the else block for the non " <<
+							"consecutive CP condition." <<
+							" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+							", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+							", openParenthesisCnt=" << openParenthesisCnt <<
+							", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+					}
+
+					// Senthil added this else block on Sep/20/2023.
+					// We are here after finding no consecutive CPs i.e.
+					// we only have found a single CP in this case but
+					// with a nested SE.
+					// If the nested level is greater than 1, we are
+					// already inside a multi-level nested SE. Let us
+					// set the nested level to 3 in this case for it
+					// to get the same level 1 SE id as it currently
+					// exists and with different values for other levels
+					// in the SE id.
+					if(nestedLevel > 1) {
+						nestedLevel = 3;
+						currentDepthOfNestedSubexpression++;
+
+						if(trace == true) {
+							cout << "_HHHHH_24 nested level is set to 3." <<
+								" currentNestedSubexpressionLevel=" << currentNestedSubexpressionLevel <<
+								", multiPartSubexpressionPartsCnt=" << multiPartSubexpressionPartsCnt <<
+								", openParenthesisCnt=" << openParenthesisCnt <<
+								", closeParenthesisCnt=" << closeParenthesisCnt << endl;
+						}
+					}
+				}
+
 				// Let us append an empty string in the logical operator
 				// slot of the subexpression layout list for that
 				// completed subexpression.
@@ -4933,10 +5776,24 @@ namespace eval_predicate_functions {
 				// Let us get a map key now (e-g: 1.1, 4.1 etc.)
 				// First argument 0 indicates that it is not a
 				// nested subexpression that just got processed.
-				getNextSubexpressionId(0, subexpressionId);
+				//
+				getNextSubexpressionId('E', nestedLevel, subexpressionId,
+					currentDepthOfNestedSubexpression, trace);
 				Functions::Collections::insertM(subexpressionsMap,
 					subexpressionId, subexpressionLayoutList);
     		}
+
+    		// Senthil added this code to insert into a map on Sep/20/2023.
+			// If it is a multi-level nested SE id, we will insert into a
+			// few relevant maps that will come handy later during the expression evaluation.
+			// Note that we are sending the OP count for the most recently
+			// processed LHS.
+    		rstring myOp = "";
+			insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps('O', subexpressionId,
+				myOp, openParenthesisCntForRecentlyProcessedLhs,
+				closeParenthesisCnt, intraNestedSubexpressionLogicalOperatorsMap,
+				multiLevelNestedSubExpressionIdMap,
+				intraMultiLevelNestedSubexpressionLogicalOperatorsMap, trace);
 
 			if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 10a ====" << endl;
@@ -4957,16 +5814,55 @@ namespace eval_predicate_functions {
     				it++;
     			} // End of list iteration while loop.
 
-    			cout <<  "Intra nested subexpression logical operators map after validating the full expression." << endl;
-				ConstMapIterator it2 = intraNestedSubexpressionLogicalOperatorsMap.getBeginIterator();
+    			// Senthil added this code block on Sep/20/2023.
+    			cout <<  "Multi-level nested subexpression id map after validating the full expression." << endl;
+    			SPL::list<rstring> multiLevelNestedSubExpressionIdMapKeys =
+    				Functions::Collections::keys(multiLevelNestedSubExpressionIdMap);
+    			Functions::Collections::sortM(multiLevelNestedSubExpressionIdMapKeys);
 
-				while (it2 != intraNestedSubexpressionLogicalOperatorsMap.getEndIterator()) {
-					std::pair<ConstValueHandle, ConstValueHandle> myVal2 = *it2;
-					std::pair<rstring,rstring> const & myRStringRString = myVal2;
-					cout << "NestedSubexpressionId=" << myRStringRString.first <<
-						", Logical operator=" <<  myRStringRString.second << endl;
-					it2++;
-				}
+    			ConstListIterator myIter = multiLevelNestedSubExpressionIdMapKeys.getBeginIterator();
+
+    			while (myIter != multiLevelNestedSubExpressionIdMapKeys.getEndIterator()) {
+    				ConstValueHandle myValue = *myIter;
+    				rstring const & myStringValue = myValue;
+    				cout << "MultiLevelNestedSubexpressionId=" << myStringValue <<
+    					", Logical operator placement value=" <<
+						multiLevelNestedSubExpressionIdMap[myStringValue] << endl;
+    				myIter++;
+    			}
+
+    			cout <<  "Intra multi-level nested subexpression logical operator map after validating the full expression." << endl;
+    			SPL::list<rstring> intraMultiLevelNestedSubexpressionLogicalOperatorsMapKeys =
+    				Functions::Collections::keys(intraMultiLevelNestedSubexpressionLogicalOperatorsMap);
+    			Functions::Collections::sortM(intraMultiLevelNestedSubexpressionLogicalOperatorsMapKeys);
+
+    			ConstListIterator logicalOpIter = intraMultiLevelNestedSubexpressionLogicalOperatorsMapKeys.getBeginIterator();
+
+    			while (logicalOpIter != intraMultiLevelNestedSubexpressionLogicalOperatorsMapKeys.getEndIterator()) {
+    				ConstValueHandle mapKey = *logicalOpIter;
+    				rstring const & mapKeyString = mapKey;
+    				cout << "MultiLevelNestedSubexpressionId=" << mapKeyString <<
+    					", Intra logical operator=" <<
+						intraMultiLevelNestedSubexpressionLogicalOperatorsMap[mapKeyString] << endl;
+    				logicalOpIter++;
+    			}
+
+    			cout <<  "Intra nested subexpression logical operators map after validating the full expression." << endl;
+    			// Senthil modified this on Sep/20/2023 to display the map contents in sorted order.
+    			SPL::list<rstring> intraNestedSELogicalOperatorMapKeys =
+    				Functions::Collections::keys(intraNestedSubexpressionLogicalOperatorsMap);
+    			Functions::Collections::sortM(intraNestedSELogicalOperatorMapKeys);
+
+    			ConstListIterator it2 = intraNestedSELogicalOperatorMapKeys.getBeginIterator();
+
+    			while (it2 != intraNestedSELogicalOperatorMapKeys.getEndIterator()) {
+    				ConstValueHandle myVal2 = *it2;
+    				rstring const & myString2 = myVal2;
+    				cout << "NestedSubexpressionId=" << myString2 <<
+    					", Logical operator=" <<
+						intraNestedSubexpressionLogicalOperatorsMap[myString2] << endl;
+    				it2++;
+    			}
 
     			cout <<  "Inter subexpression logical operators list after validating the full expression." << endl;
     			ConstListIterator it3 = interSubexpressionLogicalOperatorsList.getBeginIterator();
@@ -4979,19 +5875,21 @@ namespace eval_predicate_functions {
     			}
 
     			cout <<  "Subexpressions map after validating the full expression." << endl;
+    			// Senthil modified this on Sep/20/2023 to display the map contents in sorted order.
+    			SPL::list<rstring> subexpressionsMapKeys =
+    				Functions::Collections::keys(subexpressionsMap);
+    			Functions::Collections::sortM(subexpressionsMapKeys);
 
-				ConstMapIterator it4 = subexpressionsMap.getBeginIterator();
-				int32 cnt  = 0;
+    			ConstListIterator it4 = subexpressionsMapKeys.getBeginIterator();
+    			int32 cnt  = 0;
 
-				while (it4 != subexpressionsMap.getEndIterator()) {
-					std::pair<ConstValueHandle, ConstValueHandle> myVal4 = *it4;
-					std::pair<rstring,SPL::list<rstring> > const & myRStringSplListRString = myVal4;
-					cout << "Map Key" << ++cnt << "=" <<
-						myRStringSplListRString.first << endl;
-
+    			while (it4 != subexpressionsMapKeys.getEndIterator()) {
+    				ConstValueHandle myVal4 = *it4;
+    				rstring const & myString4 = myVal4;
+					cout << "Map Key" << ++cnt << "=" << myString4 << endl;
 					cout << "Map value:" << endl;
 					// Let us display the contents of the map value which is a list.
-	    			SPL::list<rstring> const & myListRString = myRStringSplListRString.second;
+	    			SPL::list<rstring> const & myListRString = subexpressionsMap.at(myString4);
 	    			ConstListIterator it5 = myListRString.getBeginIterator();
 
 	    			while (it5 != myListRString.getEndIterator()) {
@@ -5001,8 +5899,8 @@ namespace eval_predicate_functions {
 	    				it5++;
 	    			}
 
-					it4++;
-				}
+    				it4++;
+    			}
 
 				cout << "==== END eval_predicate trace 10a ====" << endl;
 			} // End of if(trace == true)
@@ -5045,7 +5943,20 @@ namespace eval_predicate_functions {
 			// We will check for the logical operator homogeneity now.
 			int32  previousSubExpressionId = -1;
 			rstring previousLogicalOperator = "";
+			// Senthil added this on Sep/20/2023.
+			rstring previousSubExpressionIdString = "";
+			boolean insideMultiLevelNestedSubexpression = false;
 
+			// Senthil modified this logic on Sep/20/2023.
+			// In case of multi-level nested SEs, we will have
+			// the SE id sequence for that SE group like this:
+			// "1.1", "2.1", "2.2.1", "2.2.2.1", "2.2.2.2",
+			// "2.3", "2.3.1", "2.3.2.1", "2.3.2.2", "2.3.2.3",
+			// "3.1", "3.2.1", "3.2.2.1", "4.1", "5.1" and so on.
+			// In case of single-level nested SEs, we will have
+			// the SE id sequence like this:
+			// 2.1, 2.2, 2.3
+			//
 			for(int32 i=0; i<nestedSubexpressionIdsListSize; i++) {
 				rstring idString = nestedSubexpressionIds[i];
 				rstring currentLogicalOperator =
@@ -5053,20 +5964,209 @@ namespace eval_predicate_functions {
 				SPL::list<rstring> tokens =
 					Functions::String::tokenize(idString, ".", false);
 				// We have to compare only at level 1 of the subexpression id.
-				// e-g: 2.4  Level 1 is 2 and Level is 4.
+				// e-g: 2.4  Level 1 is 2 and Level 2 is 4.
 				int32 currentId = atoi(tokens[0].c_str());
+
+				// In this for loop, if we are already inside a
+				// multi-level nested SE, then we will set the
+				// following variables so that every multi-level nested SE id
+				// will have a chance to get its logical operator match checked.
+				// In a single level nested SE, this check is a lot simpler as
+				// being done below ever since the initial release of this toolkit.
+				if(insideMultiLevelNestedSubexpression == true) {
+					previousSubExpressionIdString = idString;
+					previousLogicalOperator = currentLogicalOperator;
+				}
+
+				if(trace == true) {
+					cout << "_HHHHH_25 Error-Check-115: i=" <<
+						i+1 << " of " << nestedSubexpressionIdsListSize <<
+						", idString=" << idString << ", currentLogicalOperator=" <<
+						currentLogicalOperator << ", currentId=" << currentId <<
+						", previousSubExpressionId=" << previousSubExpressionId <<
+						", insideMultiLevelNestedSubexpression=" <<
+						insideMultiLevelNestedSubexpression <<
+						", previousSubExpressionIdString=" << previousSubExpressionIdString <<
+						", previousLogicalOperator=" << previousLogicalOperator << "." << endl;
+				}
 
 				if(currentId != previousSubExpressionId) {
 					previousSubExpressionId = currentId;
 					previousLogicalOperator = currentLogicalOperator;
+					previousSubExpressionIdString = idString;
+					// Since it is a beginning of a new SE id with a
+					// different major number in its first field,
+					// we can reset this flag.
+					insideMultiLevelNestedSubexpression = false;
+
+					if(trace == true) {
+						cout << "_HHHHH_26 Error-Check-115: i=" <<
+							i+1 << " of " << nestedSubexpressionIdsListSize <<
+							", idString=" << idString << ", currentLogicalOperator=" <<
+							currentLogicalOperator << ", currentId=" << currentId <<
+							", previousSubExpressionId=" << previousSubExpressionId <<
+							", insideMultiLevelNestedSubexpression=" <<
+							insideMultiLevelNestedSubexpression <<
+							", previousSubExpressionIdString=" << previousSubExpressionIdString <<
+							", previousLogicalOperator=" << previousLogicalOperator << "." << endl;
+					}
+
 					// This is a new nested group. So far good.
+					continue;
 				} else {
 					// Let us compare that the logical operator is the
 					// same within the current nested group.
-					if(currentLogicalOperator != previousLogicalOperator) {
-						// This is not good. There is a logical operator mismatch.
-		        		error = MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS;
-		        		return(false);
+					//
+					// Senthil modified this logic on Sep/20/2023.
+					// As explained in the commentary section above this
+					// code block, we can have single-level or multi-level
+					// nested SEs. We have to do the logical operator homogeneity check
+					// differently for single level and multi-level nested SEs.
+					// Single level nested SE ids will have x.y format with
+					// two levels/tokens. Multi-level nested SE ids will
+					// have a.b.c.d.e....k format with a variable number of fields/tokens.
+					// Let us do that properly here.
+					SPL::list<rstring> myTokens =
+					    Functions::String::tokenize(idString, ".", false);
+
+					if(Functions::Collections::size(myTokens) == 2) {
+						// This is not a multi-level nested SE.
+						insideMultiLevelNestedSubexpression = false;
+
+						if(trace == true) {
+							cout << "_HHHHH_27 Error-Check-115: i=" <<
+								i+1 << " of " << nestedSubexpressionIdsListSize <<
+								", idString=" << idString << ", currentLogicalOperator=" <<
+								currentLogicalOperator << ", currentId=" << currentId <<
+								", previousSubExpressionId=" << previousSubExpressionId <<
+								", insideMultiLevelNestedSubexpression=" <<
+								insideMultiLevelNestedSubexpression <<
+								", previousSubExpressionIdString=" << previousSubExpressionIdString <<
+								", previousLogicalOperator=" << previousLogicalOperator << "." << endl;
+						}
+
+						if(currentLogicalOperator != previousLogicalOperator) {
+							// This is not good. There is a logical operator mismatch.
+							error = MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS;
+							return(false);
+						}
+					} else {
+						// This is a multi-level SE id. We have to do the
+						// logical operator homogeneity check differently for this sequence id.
+						// This can take a pattern as shown here:
+						// "2.1", "2.2.1", "2.2.2.1", "2.2.2.2"
+						insideMultiLevelNestedSubexpression = true;
+
+						// During the full expression validation done above, we have already
+						// gathered the related multi-level SE ids associated with a particular
+						// logical operator within that multi-level SE. We can use that
+						// map to perform our task here.
+
+						// Let us first get the related multi-level nested SE id's group
+						// identifier for the previous SE id we are validating.
+						int32 groupId = -1;
+
+						if(Functions::Collections::has(multiLevelNestedSubExpressionIdMap,
+							previousSubExpressionIdString) == true) {
+							groupId = multiLevelNestedSubExpressionIdMap.at(previousSubExpressionIdString);
+
+							if(trace == true) {
+								cout << "_HHHHH_28 Error-Check-115: i=" <<
+									i+1 << " of " << nestedSubexpressionIdsListSize <<
+									", idString=" << idString << ", currentLogicalOperator=" <<
+									currentLogicalOperator << ", currentId=" << currentId <<
+									", previousSubExpressionId=" << previousSubExpressionId <<
+									", insideMultiLevelNestedSubexpression=" <<
+									insideMultiLevelNestedSubexpression <<
+									", previousSubExpressionIdString=" << previousSubExpressionIdString <<
+									", previousLogicalOperator=" << previousLogicalOperator <<
+									", groupId=" << groupId << "." << endl;
+							}
+
+							// Let us iterate over that map and get all the related SE ids
+							// starting with the same first field/number and then look up its
+							// corresponding logical operator to do the comparison.
+							ConstMapIterator it1 = multiLevelNestedSubExpressionIdMap.getBeginIterator();
+
+							while (it1 != multiLevelNestedSubExpressionIdMap.getEndIterator()) {
+								std::pair<ConstValueHandle, ConstValueHandle> myVal1 = *it1;
+								std::pair<rstring,int32> const & myRStringInt32 = myVal1;
+								rstring seId = myRStringInt32.first;
+								int32 tmpGroupId = myRStringInt32.second;
+
+								SPL::list<rstring> tmpTokens =
+								    Functions::String::tokenize(seId, ".", false);
+								int32 tmpSeId = atoi(tmpTokens[0].c_str());
+
+								if(trace == true) {
+									cout << "_HHHHH_29 Error-Check-115: i=" <<
+										i+1 << " of " << nestedSubexpressionIdsListSize <<
+										", idString=" << idString << ", currentLogicalOperator=" <<
+										currentLogicalOperator << ", currentId=" << currentId <<
+										", previousSubExpressionId=" << previousSubExpressionId <<
+										", insideMultiLevelNestedSubexpression=" <<
+										insideMultiLevelNestedSubexpression <<
+										", previousSubExpressionIdString=" << previousSubExpressionIdString <<
+										", previousLogicalOperator=" << previousLogicalOperator <<
+										", groupId=" << groupId << ", seId=" << seId <<
+										", tmpGroupId=" << tmpGroupId <<
+										", tmpSeId=" << tmpSeId << "." << endl;
+								}
+
+								// We will only focus on the SE ID and group id that we want to compare for.
+								if(tmpSeId == previousSubExpressionId && tmpGroupId == groupId) {
+									rstring myLogicalOp = "";
+
+									if(Functions::Collections::has(
+										intraNestedSubexpressionLogicalOperatorsMap, seId) == true) {
+										myLogicalOp = intraNestedSubexpressionLogicalOperatorsMap.at(seId);
+									} else {
+										error = SE_ID_NOT_FOUND_IN_INTRA_NESTED_SE_LOGICAL_OP_MAP;
+
+										if(trace == true) {
+											cout << "_HHHHH_30 Error-Check-115: Multi-level nested subexpression id " <<
+												seId << " is not a valid key in the " <<
+												"intraNestedSubexpressionLogicalOperatorsMap." << endl;
+										}
+
+										return(false);
+									}
+
+									if(trace == true) {
+										cout << "_HHHHH_31 Error-Check-115: myLogicalOp=" <<
+											myLogicalOp << ", previousLogicalOperator=" <<
+											previousLogicalOperator << "." << endl;
+									}
+
+									// Let us compare the logical operator match now.
+									if(myLogicalOp != previousLogicalOperator) {
+										// This is not good. There is a logical operator mismatch.
+										error = MIXED_LOGICAL_OPERATORS_FOUND_IN_NESTED_SUBEXPRESSIONS;
+
+										if(trace == true) {
+											cout << "_HHHHH_32 Error-Check-115: Multi-level nested subexpression id " <<
+												seId << " is followed by a logical operator " <<
+												myLogicalOp << ". It doesn't match with the " <<
+												"logical operator " << previousLogicalOperator <<
+												" that follows the previous SE ID " <<
+												previousSubExpressionIdString << "." << endl;
+										}
+
+										return(false);
+									}
+								}
+
+								it1++;
+							} // End of while loop.
+						} else {
+							if(trace == true) {
+								cout << "_HHHHH_33 Error-Check-115: Subexpression id " <<
+									previousSubExpressionIdString << "is not present in the " <<
+									"multiLevelNestedSubExpressionIdMap. So, we are "
+									"skipping the logical operator homogeneity check "
+									"for it inside a multi-level nested subexpression." << endl;
+							}
+						}
 					}
 				}
 			} // End of for loop.
@@ -5075,7 +6175,7 @@ namespace eval_predicate_functions {
         	// that should always be one less than the unique number of
 			// subexpression ids present in the subexpressions map.
 			// We will match the uniqueness only in level 1 of the
-			// subexpression id.  e-g: 2.4  Level 1 is 2 and Level is 4.
+			// subexpression id.  e-g: 2.4  Level 1 is 2 and Level 2 is 4.
 			// We have to do this, because, there may be nested subexpressions.
         	int32 subexpMapSize =
         		Functions::Collections::size(subexpressionsMap);
@@ -5092,7 +6192,7 @@ namespace eval_predicate_functions {
 				SPL::list<rstring> tokens =
 					Functions::String::tokenize(idString, ".", false);
 				// We have to compare only at level 1 of the subexpression id.
-				// e-g: 2.4  Level 1 is 2 and Level is 4.
+				// e-g: 2.4  Level 1 is 2 and Level 2 is 4.
 				int32 currentId = atoi(tokens[0].c_str());
 
 				if(currentId != previousSubExpressionId) {
@@ -5101,6 +6201,12 @@ namespace eval_predicate_functions {
 					uniqueIdCnt++;
 				}
 			} // End of for loop.
+
+			if(trace == true) {
+				cout << "_HHHHH_34 Error-Check-110: Inter subexpression logical operators count check. " <<
+					"logicalOpListSize=" << logicalOpListSize <<
+					", uniqueIdCnt=" << uniqueIdCnt << "." << endl;
+			}
 
         	if(logicalOpListSize != (uniqueIdCnt-1)) {
         		error = INCORRECT_NUMBER_OF_INTER_SUBEXPRESSION_LOGICAL_OPERATORS;
@@ -5133,6 +6239,16 @@ namespace eval_predicate_functions {
     	SPL::list<boolean> nestedSubexpressionEvalResults;
     	SPL::list<boolean> interSubexpressionEvalResults;
 
+    	// Senthil added the following five variables on Sep/20/2023.
+		SPL::list<rstring> const & subexpressionIdsList =
+			evalPlanPtr->getSubexpressionsMapKeys();
+		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap =
+			evalPlanPtr->getIntraNestedSubexpressionLogicalOperatorsMap();
+    	SPL::boolean multiLevelNestedSubexpressionEvaluationInProgress = false;
+    	SPL::list<rstring> multiLevelNestedSubexpressionIdsGettingEvaluated;
+    	SPL::map<rstring, rstring> const & intraMultiLevelNestedSELogicalOpMap =
+    		evalPlanPtr->getIntraMultiLevelNestedSubexpressionLogicalOperatorsMap();
+
     	// We can find everything we need to perform the evaluation inside the
     	// eval plan class passed to this function. It contains the following members.
     	//
@@ -5144,7 +6260,7 @@ namespace eval_predicate_functions {
 		// SPL::list<rstring> interSubexpressionLogicalOperatorsList  --> Needed very much.
     	//
     	int32 subexpMapSize =
-    		Functions::Collections::size(evalPlanPtr->getSubexpressionsMapKeys());
+    		Functions::Collections::size(subexpressionIdsList);
 
     	if(subexpMapSize == 0) {
     		// It is a very rare error. However, we will check for it.
@@ -5159,10 +6275,10 @@ namespace eval_predicate_functions {
     	// using that single result with the other such nested or non-nested
     	// subexpression groups.
     	for(int32 i=0; i<subexpMapSize; i++) {
-    		// Get the map key.
-    		rstring mapKey = evalPlanPtr->getSubexpressionsMapKeys()[i];
+    		// Get the SE Id.
+    		rstring currentSubexpressionId = subexpressionIdsList[i];
 
-    		// This map's key is a subexpression id.
+    		// SE map's key is a subexpression id.
     		// Subexpression id will go something like this:
     		// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
     		// Subexpression id is made of level 1 and level 2.
@@ -5199,6 +6315,10 @@ namespace eval_predicate_functions {
     		// 1.1                                                                   1.2                          1.3
     		// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
     		//
+        	// In addition to the expressions shown above, there is a whole different category of
+        	// deeply nested ones. To see them, you can search in this file for
+        	// "multi-level nested subexpression examples".
+        	//
     		// This map's value is a list that describes the composition of a given subexpression.
     		// Structure of such a list will go something like this:
     		// This list will have a sequence of rstring items as shown below.
@@ -5211,7 +6331,7 @@ namespace eval_predicate_functions {
     		// ...   - The sequence above repeats for this subexpression.
     		//
     		if(Functions::Collections::has(evalPlanPtr->getSubexpressionsMap(),
-    			mapKey) == false) {
+    			currentSubexpressionId) == false) {
     			// It is very rare for this to happen. But, we will check for it.
     			error = KEY_NOT_FOUND_IN_SUB_EXP_MAP_DURING_EVAL;
     			return(false);
@@ -5227,19 +6347,23 @@ namespace eval_predicate_functions {
     		// processing a nested subexpression group, we will skip this check.
     		// Similarly, if a given subexpression is not part of a
     		// nested group, calling the function below will not do any harm.
-    		if(intraNestedSubexpressionLogicalOperator == "") {
+    		if(intraNestedSubexpressionLogicalOperator == "" &&
+    			multiLevelNestedSubexpressionEvaluationInProgress == false) {
     			// Let us find out if this map key is part of a
     			// nested subexpression group.
-    			getNestedSubexpressionGroupInfo(mapKey,
-    				evalPlanPtr->getSubexpressionsMapKeys(),
-					evalPlanPtr->getIntraNestedSubexpressionLogicalOperatorsMap(),
+    			getNestedSubexpressionGroupInfo(currentSubexpressionId,
+    				subexpressionIdsList,
+					intraNestedSubexpressionLogicalOperatorsMap,
+					intraMultiLevelNestedSELogicalOpMap,
 					subexpressionCntInCurrentNestedGroup,
-					intraNestedSubexpressionLogicalOperator);
+					intraNestedSubexpressionLogicalOperator,
+					multiLevelNestedSubexpressionEvaluationInProgress,
+					multiLevelNestedSubexpressionIdsGettingEvaluated);
     		}
 
     		// Using the map key, get the subexpression layout list.
     		SPL::list<rstring> const & subexpressionLayoutList =
-    			evalPlanPtr->getSubexpressionsMap().at(mapKey);
+    			evalPlanPtr->getSubexpressionsMap().at(currentSubexpressionId);
 
     		int32 subExpLayoutListCnt =
     			Functions::Collections::size(subexpressionLayoutList);
@@ -5253,7 +6377,7 @@ namespace eval_predicate_functions {
 			if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 4b ====" << endl;
 				cout << "Full expression=" << evalPlanPtr->getExpression() << endl;
-				cout << "Subexpressions map key=" << mapKey << endl;
+				cout << "Subexpression Id=" << currentSubexpressionId << endl;
 				cout << "subexpressionCntInCurrentNestedGroup=" <<
 					subexpressionCntInCurrentNestedGroup << endl;
 				cout << "intraNestedSubexpressionLogicalOperator=" <<
@@ -7219,13 +8343,19 @@ namespace eval_predicate_functions {
 						SPL::map<rstring, SPL::list<rstring> > lotSubexpressionsMap;
 						SPL::map<rstring, rstring> lotIntraNestedSubexpressionLogicalOperatorsMap;
 						SPL::list<rstring> lotInterSubexpressionLogicalOperatorsList;
+						// Senthil added this on Sep/20/2023.
+						SPL::map<rstring, int32> lotMultiLevelNestedSubExpressionIdMap;
+						SPL::map<rstring, rstring> lotIntraMultiLevelNestedSubexpressionLogicalOperatorsMap;
 						// We are making a non-recursive call. So, set it to 0.
 						// i.e. start validating from index 0 of the
 						// subexpression string we created above using substring.
+						// Senthil added a new method argument on Sep/20/2023.
 						int32 validationStartIdx = 0;
 						lotResult = validateExpression(lotSubexpression, lotTupleAttributesMap,
 							lotSubexpressionsMap, lotIntraNestedSubexpressionLogicalOperatorsMap,
-							lotInterSubexpressionLogicalOperatorsList, error,
+							lotInterSubexpressionLogicalOperatorsList,
+							lotMultiLevelNestedSubExpressionIdMap,
+							lotIntraMultiLevelNestedSubexpressionLogicalOperatorsMap, error,
 							validationStartIdx, trace);
 
 						if(lotResult == false) {
@@ -7353,7 +8483,7 @@ namespace eval_predicate_functions {
     			if(trace == true) {
     				cout << "==== BEGIN eval_predicate trace 4c ====" << endl;
     				cout << "Full expression=" << evalPlanPtr->getExpression() << endl;
-    				cout << "Subexpressions map key=" << mapKey << endl;
+    				cout << "Subexpression Id=" << currentSubexpressionId << endl;
     				cout << "subexpressionCntInCurrentNestedGroup=" <<
     					subexpressionCntInCurrentNestedGroup << endl;
     				cout << "intraNestedSubexpressionLogicalOperator=" <<
@@ -7370,8 +8500,7 @@ namespace eval_predicate_functions {
 
     			// Let us see if we reached the end of the subexpression layout list or
     			// optimize by skipping the rest of the evals.
-    			if(skipRemainingEvals == true ||
-    				intraSubexpressionLogicalOperator == "") {
+    			if(skipRemainingEvals == true || intraSubexpressionLogicalOperator == "") {
     				// We are done evaluating every block within this subexpression layout list.
     				break;
     			}
@@ -7385,6 +8514,16 @@ namespace eval_predicate_functions {
     			// store all the inter subexpression eval results.
 				Functions::Collections::appendM(interSubexpressionEvalResults,
 					intraSubexpressionEvalResult);
+
+				if(trace == true) {
+					cout << "_HHHHH_35 Completed evaluating a non-nested SE with " <<
+						"intraNestedSubexpressionLogicalOperator=" <<
+						intraNestedSubexpressionLogicalOperator <<
+						" and added the current intraSubexpressionEvalResult of " <<
+						intraSubexpressionEvalResult <<
+						" in the interSubexpressionEvalResults list." << endl;
+				}
+
 				// Continue the for loop.
 				continue;
     		}
@@ -7403,48 +8542,234 @@ namespace eval_predicate_functions {
     		// processed all the subexpressions in that nested group.
     		subexpressionCntInCurrentNestedGroup--;
 
+			if(trace == true) {
+				cout << "_HHHHH_36 Added the current intraSubexpressionEvalResult of " <<
+					intraSubexpressionEvalResult <<
+					" in the nestedSubexpressionEvalResults list. " <<
+					"Remaining subexpressionCntInCurrentNestedGroup=" <<
+					subexpressionCntInCurrentNestedGroup << endl;
+			}
+
     		if(subexpressionCntInCurrentNestedGroup > 0) {
     			// We are not yet done evaluating everything in this nested group.
     			// Continue the next map key iteration in the for loop.
     			continue;
     		}
 
-			// We are done evaluating this nested group.
-			// We can consolidate its eval results now.
-			int32 listSize =
-				Functions::Collections::size(nestedSubexpressionEvalResults);
-			// Get the first eval result from the list.
-			boolean nestedEvalResult = nestedSubexpressionEvalResults[0];
+    		// Senthil modified this section of the code on Sep/20/2023 to
+    		// handle the evaluation of multi-level nested SEs in a proper way.
+    		boolean nestedEvalResult = false;
+			int32 listSize = Functions::Collections::size(nestedSubexpressionEvalResults);
 
-			for(int32 x=1; x<listSize; x++) {
-				if(intraNestedSubexpressionLogicalOperator == "&&") {
-					nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[x];
+			if(trace == true) {
+				cout << "_HHHHH_37 Just about to consolidate the nested SE evaluation results. " <<
+					"multiLevelNestedSubexpressionEvaluationInProgress=" <<
+					multiLevelNestedSubexpressionEvaluationInProgress <<
+					", Total number of nested SE eval results=" << listSize << endl;
+			}
 
-					// Minor optimization by which we can break from the
-					// for loop if the logical AND result is false.
-					if(nestedEvalResult == false) {
-						break;
+    		if(multiLevelNestedSubexpressionEvaluationInProgress == false) {
+    			// This is evaluation for the single-level nested SE.
+				// We are done evaluating this nested group.
+				// We can consolidate its eval results now.
+    			//
+				// Get the first eval result from the list.
+				nestedEvalResult = nestedSubexpressionEvalResults[0];
+
+				for(int32 x=1; x<listSize; x++) {
+					if(intraNestedSubexpressionLogicalOperator == "&&") {
+						nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[x];
+
+						// Minor optimization by which we can break from the
+						// for loop if the logical AND result is false.
+						if(nestedEvalResult == false) {
+							break;
+						}
+					} else {
+						nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[x];
+
+						// Minor optimization by which we can break from the
+						// for loop if the logical OR result is true.
+						if(nestedEvalResult == true) {
+							break;
+						}
 					}
-				} else {
-					nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[x];
+				} // End of for loop.
 
-					// Minor optimization by which we can break from the
-					// for loop if the logical OR result is true.
-					if(nestedEvalResult == true) {
-						break;
-					}
+				if(trace == true) {
+					cout << "_HHHHH_38 Finished combining the eval results for "
+						"the single-level nested SEs by using the " <<
+						"intra nested SE logical operator of " <<
+						intraNestedSubexpressionLogicalOperator << "." << endl;
 				}
-			} // End of for loop.
+    		} else {
+    			// This evaluation is for the multi-level nested SEs.
+    			// We have to do it in the order in which the given
+    			// multi-level nested SE is written.
+    			// We can make use of a combination of the following
+    			// data structures to get a consolidated evaluation result
+    			// for a given multi-level nested SE.
+    			// 1) Nested SE eval results list.
+    			// 2) Multi-level nested SE ids list that has all the
+    			//    correct lexically ordered/sorted SE ids that are
+    			//    getting evaluated now.
+    			// 3) Intra multi-level nested SE logical operator map that gives
+    			//    details about which SE ids constitute a multi-level nested group.
+    			//
+    			// Following is an example of how a multi-level nested SE specific
+    			// data structures can have relevant values stored in them.
+    			/*
+				Multi-level nested subexpression id map after validating the full expression.
+				MultiLevelNestedSubexpressionId="2.1", Logical operator placement value=1
+				MultiLevelNestedSubexpressionId="2.2.1", Logical operator placement value=2
+
+				Intra multi-level nested subexpression logical operator map after validating the full expression.
+				A value of an empty string indicates the end of a given multi-level nested SE group.
+				MultiLevelNestedSubexpressionId="2.1", Intra logical operator=""
+				MultiLevelNestedSubexpressionId="2.2.1", Intra logical operator="&&"
+				MultiLevelNestedSubexpressionId="2.2.2.1", Intra logical operator=""
+
+				Intra nested subexpression logical operators map after validating the full expression.
+				NestedSubexpressionId="2.1", Logical operator="||"
+				NestedSubexpressionId="2.2.1", Logical operator="&&"
+
+				Inter subexpression logical operators list after validating the full expression.
+				"&&"
+    			*/
+    			//
+    			// This list will hold the results from the individual nested
+    			// groups that are within the given multi-level nested SE.
+    			SPL::list<boolean> multiLevelNestedSubexpressionEvalResults;
+
+    			// We can now iterate over the multi-level nested SE ids list that
+    			// contains all the SE ids that got evaluated above.
+    			int32 numberOfSeIds =
+    				Functions::Collections::size(multiLevelNestedSubexpressionIdsGettingEvaluated);
+    			rstring myLogicalOp = "";
+    			rstring seId = "";
+
+    			for(int i=0; i<numberOfSeIds; i++) {
+    				seId = multiLevelNestedSubexpressionIdsGettingEvaluated[i];
+
+    				if(trace == true) {
+						cout << "_HHHHH_39 Stage 1 in the multi-level nested SE evaluation. " <<
+							"i=" << i+1 << " of " << numberOfSeIds << ", seId=" << seId << ", myLogicalOp=" <<
+							myLogicalOp << ", current nested eval result=" << nestedEvalResult <<
+							", next nested eval result=" << nestedSubexpressionEvalResults[i] << endl;
+    				}
+
+					if(myLogicalOp == "&&") {
+						// Let us && it with the previously computed and consolidated eval result thus far.
+						nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[i];
+					} else if(myLogicalOp == "||") {
+						// Let us || it with the previously computed and consolidated eval result thus far.
+						nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[i];
+					} else {
+						// Logical operator is set to an empty string. It indicates that
+						// we are at the beginning of a new multi-level nested SE group.
+						// Let us get the eval result of the very first SE id in this group.
+						nestedEvalResult = nestedSubexpressionEvalResults[i];
+					}
+
+    				if(trace == true) {
+						cout << "_HHHHH_40 Stage 2 in the multi-level nested SE evaluation. " <<
+							"New nested eval result=" << nestedEvalResult << endl;
+    				}
+
+    				// Get the logical operator associated with the current SE id.
+    				if(Functions::Collections::has(intraMultiLevelNestedSELogicalOpMap, seId) == true) {
+    					myLogicalOp = intraMultiLevelNestedSELogicalOpMap.at(seId);
+    				} else {
+    					error = SE_ID_NOT_FOUND_IN_INTRA_MULTI_LEVEL_NESTED_SE_LOGICAL_OP_MAP;
+
+        				if(trace == true) {
+    						cout << "_HHHHH_41 Multi-level nested SE ID " << seId <<
+    							" is not a valid key in the intraMultiLevelNestedSELogicalOpMap" << endl;
+        				}
+
+        				return(false);
+    				}
+
+    				// Check the logical operator set to the current multi-level nested SE Id to
+    				// see if it is the very last one in the given nested SE group.
+    				if(myLogicalOp == "") {
+    					// This is the end of a current multi-level nested SE group.
+    					// We can store the eval result computed for this nested SE group.
+    					Functions::Collections::appendM(multiLevelNestedSubexpressionEvalResults, nestedEvalResult);
+
+    					if(trace == true) {
+    						cout << "_HHHHH_42 Stage 3 in the multi-level nested SE evaluation. " <<
+								"Stored the nested eval result=" << nestedEvalResult <<
+								" in the multiLevelNestedSubexpressionEvalResults list." << endl;
+    					}
+    				}
+    			} // End of for loop.
+
+    			// At this time, we have completed the evaluation of the individual
+    			// nested SEs that are part of a multi-level nested SE.
+    			// We can now combine the nested eval results computed above for the
+    			// entire multi-level nested SE.
+    			//
+    			// Let us get the intra nested SE logical operator.
+    			// We can simply get the one associated with the
+    			// very first SE id in the given multi-level nested SE.
+    			seId = multiLevelNestedSubexpressionIdsGettingEvaluated[0];
+    			intraNestedSubexpressionLogicalOperator =
+    				intraNestedSubexpressionLogicalOperatorsMap.at(seId);
+
+				// We can now consolidate the eval results stored above.
+    			//
+				listSize = Functions::Collections::size(multiLevelNestedSubexpressionEvalResults);
+				// Get the first eval result from the list.
+				nestedEvalResult = multiLevelNestedSubexpressionEvalResults[0];
+
+				for(int32 x=1; x<listSize; x++) {
+					if(intraNestedSubexpressionLogicalOperator == "&&") {
+						nestedEvalResult = nestedEvalResult && multiLevelNestedSubexpressionEvalResults[x];
+
+						// Minor optimization by which we can break from the
+						// for loop if the logical AND result is false.
+						if(nestedEvalResult == false) {
+							break;
+						}
+					} else {
+						nestedEvalResult = nestedEvalResult || multiLevelNestedSubexpressionEvalResults[x];
+
+						// Minor optimization by which we can break from the
+						// for loop if the logical OR result is true.
+						if(nestedEvalResult == true) {
+							break;
+						}
+					}
+				} // End of for loop.
+
+				if(trace == true) {
+					cout << "_HHHHH_43 Stage 4 in the multi-level nested SE evaluation. " <<
+						"Finished combining the eval results for " << listSize <<
+						" multi-level nested SE groups by using the " <<
+						"intra nested SE logical operator of " <<
+						intraNestedSubexpressionLogicalOperator << "." << endl;
+				}
+    		} // End of if(multiLevelNestedSubexpressionEvaluationInProgress == false)
 
 			// We can now add the consolidated result from this
 			// nested group to our interSubexpressionEvalResults list.
-			Functions::Collections::appendM(interSubexpressionEvalResults,
-				nestedEvalResult);
+			Functions::Collections::appendM(interSubexpressionEvalResults, nestedEvalResult);
+
+			if(trace == true) {
+				cout << "_HHHHH_44 Added the nestedEvalResult of " << nestedEvalResult <<
+					" in the interSubexpressionEvalResults list." << endl;
+			}
+
 			// We are done with this particular nested subexpression group.
 			// We can reset the important local variables we used for that.
 			subexpressionCntInCurrentNestedGroup = 0;
 			intraNestedSubexpressionLogicalOperator = "";
 			Functions::Collections::clearM(nestedSubexpressionEvalResults);
+			// Senthil added the following multi-level nested SE
+			// variable reset on Sep/20/2023.
+	    	multiLevelNestedSubexpressionEvaluationInProgress = false;
+	    	Functions::Collections::clearM(multiLevelNestedSubexpressionIdsGettingEvaluated);
     	} // End of the for loop iterating over the subexpression map keys.
 
     	int32 numberOfEvalResults = Functions::Collections::size(interSubexpressionEvalResults);
@@ -8247,13 +9572,20 @@ namespace eval_predicate_functions {
 	// processed successfully. Depending on which stage the
 	// expression processing takes place, this function can get
 	// called from different sections in the expression validation method.
-	inline void getNextSubexpressionId(int32 const & currentNestedSubexpressionLevel,
-		rstring & subexpressionId) {
-		// Depending on the nested or non-nested nature,
-		// subexpression id will carry a different
-		// number value in a string variable.
-    	// e-g: "1.1", "2.1", "2.2", "2.3", "3.1", "4.1", "4.2", "4.3",
-		//      "4.4", "5.1", "5.2", "5.3", "6.1", "6.2", "7.1", "7.2"
+	inline void getNextSubexpressionId(char const & callerId,
+		int32 const & currentNestedSubexpressionLevel,
+		rstring & subexpressionId,
+		int32 const & currentDepthOfNestedSubexpression, boolean trace=false) {
+		// Depending on the nested or non-nested nature, subexpression id
+		// will carry a different number value in a string variable.
+		//
+		// SE map's key is a subexpression id.
+		// Subexpression id will go something like this:
+		// 1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1
+		// Subexpression id is made of level 1 and level2.
+		// We support either zero parenthesis or a single level or
+		// multilevel (nested) parenthesis.
+		// Logical operators used within a subexpression must be of the same kind.
 		//
 		// A few examples of zero, single and nested parenthesis.
 		//
@@ -8284,63 +9616,139 @@ namespace eval_predicate_functions {
 		// 1.1                                                                   1.2                          1.3
 		// (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
 		//
+    	// In addition to the expressions shown above, there is a whole different category of
+    	// deeply nested ones. To see them, you can search in this file for
+    	// "multi-level nested subexpression examples".
+    	//
+		// We also handle multi-level nested subexpressions that are very involved to
+		// validate and evaluate. You can refer to the detailed processing steps sequence
+		// commentary available at the top of the validateExpression method shown above.
+		//
+		rstring seIdValuePassedToThisMethod = subexpressionId;
+
 		if(subexpressionId == "") {
 			// This is the very first subexpression that got
 			// processed within this expression. So, we only
 			// need to initialize it to the starting subexpression id.
 			subexpressionId = "1.1";
-			return;
-		}
-
-		SPL::list<rstring> tokens =
-			Functions::String::tokenize(subexpressionId, ".", false);
-		subexpressionId = "";
-
-		// We are going to take care of the following three conditions in the
-		// first half of the if block below.
-		// 1) If we have an expression with zero open and close parenthesis,
-		// then we will have the subexpression id as 1.1, 2.1, 3.1 and so on.
-		// It is a non-nested subexpression with current nested level set to 0.
-		// Refer to the first example expression above.
-		//
-		// 2) If we have an expression with single level non-nested
-		// open and close parenthesis, then we will have the
-		// subexpression id as 1.1, 2.1, 3.1 and so on.
-		// In the non-nested case, the number of open and close
-		// parenthesis will be the same after a subexpression is processed.
-		// It is a non-nested subexpression with current nested level set to 0.
-		// Refer to the second and third example expressions above.
-		//
-		// 3) If we are here because of the open and close parenthesis not
-		// being the same, that means this is the nested case.
-		// If the current nested subexpression level is 1, that means
-		// this is a fresh beginning of a nested subexpression.
-		// In that case, we will increment at level 1 and then set
-		// the level 2 to 1.
-		// Refer to example expressions 4 to 9 above.
-		//
-		if(currentNestedSubexpressionLevel <= 1){
-			// For these three conditions, it is
-			// sufficient to increment only at level 1.
-			int32 value = atoi(tokens[0].c_str());
-			value++;
-			// Store it back as a string.
-			ostringstream valueString;
-			valueString << value;
-			subexpressionId = valueString.str();
-			// In this case, we will always set the level 2 value to "1".
-			subexpressionId += ".1";
 		} else {
-			// This is a nested subexpression that is after its
-			// fresh beginning. So, we will increment only at level 2.
-			// Let us keep the existing value at level 1.
-			subexpressionId = tokens[0];
-			int32 value = atoi(tokens[1].c_str());
-			value++;
-			// Store it back as a string.
-			ostringstream valueString;
-			valueString << value;
-			subexpressionId += "." + valueString.str();
+			SPL::list<rstring> tokens =
+				Functions::String::tokenize(subexpressionId, ".", false);
+			subexpressionId = "";
+			int32 value = 0;
+
+			// We are going to take care of the following three conditions in the
+			// first half of the if block below.
+			// 1) If we have an expression with zero open and close parenthesis,
+			// then we will have the subexpression id as 1.1, 2.1, 3.1 and so on.
+			// It is a non-nested subexpression with current nested level set to 0.
+			// Refer to the first example expression above.
+			//
+			// 2) If we have an expression with single level non-nested
+			// open and close parenthesis, then we will have the
+			// subexpression id as 1.1, 2.1, 3.1 and so on.
+			// In the non-nested case, the number of open and close
+			// parenthesis will be the same after a subexpression is processed.
+			// It is a non-nested subexpression with current nested level set to 0.
+			// Refer to the second and third example expressions above.
+			//
+			// 3) If we are here because of the open and close parenthesis not
+			// being the same, that means this is the nested case. We have to be
+			// prepared to handle both single-level and multi-level nested subexpressions.
+			//
+
+			// If the current nested subexpression level is 1, that means
+			// this is a fresh beginning of a nested subexpression.
+			// In that case, we will increment at level 1 and then set
+			// the level 2 to 1.
+			// Refer to example expressions 4 to 9 above.
+			//
+			if(currentNestedSubexpressionLevel <= 2) {
+				// Current Nested SE level = 0 when there is no nested SE.
+				// Current Nested SE level = 1 when it is a single level self-enclosed SE.
+				// Current Nested SE level = 2 is as explained below.
+				// This is a special condition where the previously completed and processed
+				// SE appears within its own matching Open and Close parenthesis.
+				// That means, this current SE we are processing here is a new
+				// beginning of a nested SE and we must increment its level 1 by one.
+				// Look for additional commentary about it in the Close parenthesis
+				// processing block in the validate expression method above.
+				//
+				// For these three conditions, it is sufficient to increment only at level 1.
+				value = atoi(tokens[0].c_str());
+				value++;
+				// Store it back as a string.
+				ostringstream valueString;
+				valueString << value;
+				// In this case, SE id will carry the format X.Y where
+				// X is level 1 and Y is level 2.
+				subexpressionId = valueString.str();
+				// In this case, we will always set the level 2 value to "1".
+				subexpressionId += ".1";
+			} else {
+				// This else block will handle when the Current Nested SE level
+				// passed to this method carries a value of 3.
+				//
+				// Senthil enhanced the code in this else block on Sep/20/2023.
+				// The enhanced logic here is significantly different from
+				// what was done in the previous versions.
+				//
+				// This is a nested subexpression that is occurring after
+				// a fresh beginning. In this case, SE levels need to be
+				// indicated via more than the usual X.Y notation.
+				// It has to represent the nature of deep nesting
+				// within a given SE. For example, it can take forms as shown below.
+				// 2.1.1 (OR) 3.2.1.2 (OR) 4.1.2.3 (OR) 4.2.1.2.4 etc.
+				// A sequence of ids in an expression can be like this:
+				// "1.1", "2.1", "2.2.1", "2.2.2.1", "2.2.2.2",
+				// "2.3", "2.3.1", "2.3.2.1", "2.3.2.2", "2.3.2.3",
+				// "3.1", "3.2.1", "3.2.2.1", "4.1", "5.1" and so on.
+				//
+				// We will first copy everything from the SE passed to this
+				// method as it is except for the final level's digit.
+				// i.e. copy everything upto the digit that appears
+				// just before the final level's digit.
+				subexpressionId = "";
+
+				for(int i=0; i<Functions::Collections::size(tokens)-1; i++) {
+					subexpressionId += tokens[i] + ".";
+				} // End of for loop.
+
+				// Increment the final level's digit in the given subexpression id only when
+				// the current depth of the given nested subexpression is 1.
+				value = atoi(tokens[Functions::Collections::size(tokens)-1].c_str());
+
+				if(currentDepthOfNestedSubexpression == 1) {
+					value++;
+				}
+
+				// Store it back as a string.
+				ostringstream valueString;
+				valueString << value;
+				subexpressionId += valueString.str();
+
+				// We will perform the following logic only when
+				// current depth is passed here as a non-zero value.
+				if(currentDepthOfNestedSubexpression > 0) {
+					// We can now simply append the value passed to
+					// this method for the current depth of a
+					// nested subexpression to the given subexpression id.
+					ostringstream newValueString;
+					newValueString << currentDepthOfNestedSubexpression;
+					subexpressionId += "." + newValueString.str();
+				}
+			} // End of if(currentNestedSubexpressionLevel <= 2)
+		} // End of if(subexpressionId == "")
+
+		if(trace == true) {
+			cout << "_GGGGG_ callerId=" << callerId <<
+				", seIdValuePassedToThisMethod=" <<
+				seIdValuePassedToThisMethod <<
+				", currentNestedSubexpressionLevel=" <<
+				currentNestedSubexpressionLevel <<
+				", currentDepthOfNestedSubexpression=" <<
+				currentDepthOfNestedSubexpression <<
+				", New SE ID=" << subexpressionId << endl;
 		}
 	} // End of getNextSubexpressionId
 
@@ -8369,8 +9777,12 @@ namespace eval_predicate_functions {
 	// This function is called from the expression validation
 	// function when processing an open parenthesis.
 	// It checks if the current single subexpression is
-	// enclosed within a parenthesis.
-	// e-g: (b contains "xyz")
+	// enclosed within a parenthesis. In this source file,
+	// you may see this referred as "Single enclosed subexpression" or
+	// "Self enclosed subexpression".
+	// e-g: (b contains "xyz") which is a "Single enclosed subexpression".
+	// (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2') is
+	// not a "Single enclosed subexpression".
 	inline boolean isThisAnEnclosedSingleSubexpression(rstring const & expr,
 		int32 const & idx) {
 		// We have to find if a close parenthesis comes before or
@@ -8433,11 +9845,16 @@ namespace eval_predicate_functions {
 	// in a nested group. If it is, then it gets the
 	// relevant details such as the number of subexpressions
 	// in that group and the intra nested subexpression logical operator.
+	// Senthil modified this method on Sep/20/2023 to add the
+	// necessary logic for dealing with the multi-level nested SE.
 	inline void getNestedSubexpressionGroupInfo(rstring const & subexpressionId,
 		SPL::list<rstring> const & subexpressionIdsList,
 		SPL::map<rstring, rstring> const & intraNestedSubexpressionLogicalOperatorsMap,
+		SPL::map<rstring, rstring> const & intraMultiLevelNestedSELogicalOpMap,
 		int32 & subexpressionCntInCurrentNestedGroup,
-		rstring & intraNestedSubexpressionLogicalOperator) {
+		rstring & intraNestedSubexpressionLogicalOperator,
+		SPL::boolean & multiLevelNestedSubexpressionsPresent,
+		SPL::list<rstring> & multiLevelNestedSubexpressionIdsList) {
 		// This function is called from the evaluateExpression method.
 		// Since all the subexpression ids in a nested group will
 		// appear in a sequential (sorted) order, this function can be called
@@ -8445,6 +9862,7 @@ namespace eval_predicate_functions {
 		// evaluating them together.
 		subexpressionCntInCurrentNestedGroup = 0;
 		intraNestedSubexpressionLogicalOperator = "";
+		multiLevelNestedSubexpressionsPresent = false;
 
 		// Let us check if the given subexpression id is in a nested group.
 		// e-g: 2.1, 2.2, 2.3  They all carry the same level 1.
@@ -8467,8 +9885,17 @@ namespace eval_predicate_functions {
 			if(currentId == myId) {
 				// We have a match. This could be part of the same nested group.
 				subexpressionCntInCurrentNestedGroup++;
+
+				// If this SE id is part of a multi-level nested SE anchored by
+				// the SE id passed to this method, then we have to populate a
+				// given list with all such SE ids.
+				Functions::Collections::appendM(multiLevelNestedSubexpressionIdsList, idString);
 			}
 		} // End of for loop.
+
+		// Determine if it is a single-level or multi-level nested SE.
+		multiLevelNestedSubexpressionsPresent =
+			Functions::Collections::has(intraMultiLevelNestedSELogicalOpMap, subexpressionId);
 
 		// If we only find more than one entry with the
 		// same level 1, then that is considered to be in
@@ -8477,11 +9904,24 @@ namespace eval_predicate_functions {
 			// It is sufficient to get only one of this logical operator.
 			// Because at the time of validation, we already verified that
 			// they are all of the same kind within a given nested group.
+			// This variable assignment is mainly applicable for a single level nested SE.
+			//
+			// For a multi-level nested SE, variable assignment below is good for the
+			// very first SE id within that multi-level nested group. For the
+			// subsequent SE ids within that multi-level nested group, it may have
+			// different logical operators in them. In such cases, it is necessary to
+			// determine the correct logical operator within a multi-level nested SE via
+			// a very specific map available in the EvalPlan data structure and
+			// use that in the evaluation logic performed inside a different method.
 			intraNestedSubexpressionLogicalOperator =
 				intraNestedSubexpressionLogicalOperatorsMap.at(subexpressionId);
 		} else {
 			// This one is not in a nested group. So set it to 0.
 			subexpressionCntInCurrentNestedGroup = 0;
+			// Since it is not in a nested group, we can empty this list.
+			Functions::Collections::clearM(multiLevelNestedSubexpressionIdsList);
+			// It is safe to reset this flag as well.
+			multiLevelNestedSubexpressionsPresent = false;
 		}
 	} // End of getNestedSubexpressionGroupInfo
 
@@ -10726,6 +12166,200 @@ namespace eval_predicate_functions {
 		Functions::Collections::clearM(attributeInfo);
 		parseTupleAttributes(schema, attributeInfo, error, trace);
     } // End of get_tuple_schema_and_attribute_info
+
+    // Senthil added this method on Sep/20/2023.
+    //
+    // This method inserts the multi-level nested SE id and a logical operator
+    // for a given SE id into the following two maps.
+    //
+	// 1) Multi-level nested SE id map
+	// 2) Intra multi-level nested SE logical operators map
+    //
+    // Arg1: CallerId - To indicate from where this method gets called.
+    // Arg2: Subexpression Id string
+    // Arg3: Logical Operator string
+    // Arg4: Open Parenthesis count
+    // Arg5: Close Parenthesis count
+    // Arg6: Multi-level nested SE id map
+    // Arg7: Intra multi-level nested SE logical operators map
+    // Arg8: Trace flag
+    inline void insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps(char const & callerId,
+    	rstring const & seId, rstring const & logicalOpFromCaller,
+		int32 const & opCnt, int32 const & cpCnt,
+		SPL::map<rstring, rstring> const & insloMap,
+		SPL::map<rstring, int32> & mlnsidMap,
+		SPL::map<rstring, rstring> & imlnsidMap, boolean trace) {
+    	// We can return now if it is an empty SE Id.
+    	if(seId == "") {
+    		return;
+    	}
+
+		// We are going to add it to different maps.
+		// 1) Multi-level nested SE id map
+		// 2) Intra multi-level nested SE logical operators map.
+		//
+		// If we are currently processing a multi-level nested SE,
+		// we will group the related SE ids connected with a
+		// specific intra multi-level nested SE logical operator.
+		// If we are in a multi-level nested subexpression, SE ids will be
+		// different from the single level SE ids which follows the format x.y
+		// e-g: 2.1, 2.2, 2.3 and so on with two tokens.
+		// Multi-level SE ids will follow a sequence in a
+    	// format that is longer than the usual x.y format.
+		// e-g: 2.1, 2.2.1, 2.2.1.2, 2.2.1.2.3, 2.2.1.2.4.1 and so on.
+		SPL::list<rstring> myTokens =
+		    Functions::String::tokenize(seId, ".", false);
+
+		// In this method, we will do the required work only if it is
+		// a multi-level nested subexpression id.
+		if(Functions::Collections::size(myTokens) > 2) {
+			// We are inside a multi-level nested SE.
+			// We can store the SE ids present within this
+			// multi-level nested SE into a separate map.
+			// This map's key will be SE id and its value will be
+			// an integer number derived from subtracting the
+			// number of OP (Open Parenthesis) with the number of CP (Close Parenthesis).
+			// i.e. OP - CP
+			// The very first SE id in a multi-level nested SE carries a
+			// format x.y with two levels and hence we must not have
+			// stored it earlier. Let us do it now when we process an
+			// SE id with a nested depth of 2.
+			//
+			// Let us get the very first character in the current SE id.
+			rstring veryFirstSEId = myTokens[0] + "." + "1";
+
+			if(Functions::Collections::has(mlnsidMap, veryFirstSEId) == false) {
+				// We can add it to the map now with a value of 1.
+				Functions::Collections::insertM(mlnsidMap, veryFirstSEId, 1);
+
+				// We are also going to add it to another map which will
+				// come handy when evaluating the multi-level nested SEs.
+				// For the very first SE id in a multi-level nested SE,
+				// we are going to store an empty string so that the
+				// evaluation result for this SE will be combined in a
+				// proper way with the rest of the results from other
+				// SEs in a given multi-level nested SE.
+				rstring myOp = "";
+				Functions::Collections::insertM(imlnsidMap, veryFirstSEId, myOp);
+
+				if(trace == true) {
+					cout << "_HHHHH_45 CallerId=" << callerId <<
+						", seId=" << seId << ". Multi-level nested subexpression id " <<
+						veryFirstSEId << " is being inserted into the " <<
+						"multiLevelNestedSubExpressionIdMap with a value of 1. " <<
+						"It is also being inserted into the "<<
+						"intraMultiLevelNestedSubexpressionLogicalOperatorsMap with " <<
+						"a value of an empty string." << endl;
+				}
+			}
+
+			// We can now store the current multi-level nested SE id passed to
+			// this method by the caller.
+			// Find the difference between the open and close parenthesis counts.
+			int32 mapValue = opCnt - cpCnt;
+			rstring logicalOp = "";
+
+			if(mapValue > 1) {
+				// In my testing with a multi-level nested subexpression,
+				// I have observed that that very last nested SE will have
+				// Open Parenthesis count higher than the Close Parenthesis count
+				// just by a value of 1 (or 0 when OP=CP). All other interior multi-level
+				// nested SEs will have a difference of greater than 1.
+				// So, we will focus here only on the interior SEs.
+				// If it is not the very last SE in a given multi-level
+				// nested SE group, we will store a non-empty logical
+				// operator that the caller sent us here.
+				logicalOp = logicalOpFromCaller;
+			}
+
+			boolean insertedInMap1 = false;
+			boolean insertedInMap2 = false;
+			// Tells us if a given SE Id is present in the Intra multi-level nested SE Id map.
+			boolean alreadyPresentInImlnsidMap = false;
+			// Tells us if a given SE Id is present in the intraNestedSubexpressionLogicalOperatorsMap.
+			// We have to first check if the caller passed SE Id is present in
+			// the intraNestedSubexpressionLogicalOperatorsMap. Only then,
+			// we can insert it in the first map below.
+			boolean presentInInsloMap = Functions::Collections::has(insloMap, seId);
+
+			// First map mentioned above will help us later in
+			// validating the intra nested SE logical operators' homogeneity.
+			// Second map will come handy later when evaluating the
+			// multi-level nested SEs.
+			//
+			// Insert into the multilevel nested SE id map only if it is not
+			// the very last SE. Because, we don't have to consider the vary last
+			// multi-level nested SE id in our validation check done later for
+			// the homogeneity between the intra nested SE logical operators.
+			// Similarly, no need to enter an SE id that is part of a partially
+			// seen (parsed) multi-level nested SE. The condition we want is
+			// OP-CP == 1.
+			//
+			if(mapValue == 1 && presentInInsloMap == true) {
+				// Multi-level nested SE id map
+				Functions::Collections::insertM(mlnsidMap, seId, mapValue);
+				insertedInMap1 = true;
+			}
+
+			// All SE ids that come into this section of the code is
+			// required to be inserted into the second map.
+			// If it already exists in the map, don't insert it again.
+			if(Functions::Collections::has(imlnsidMap, seId) == false) {
+				// Intra multi-level nested SE logical operators map
+				Functions::Collections::insertM(imlnsidMap, seId, logicalOp);
+				insertedInMap2 = true;
+			} else {
+				// This SE id is already in the intraMultiLevelNestedSubexpressionLogicalOperatorsMap.
+				alreadyPresentInImlnsidMap = true;
+			}
+
+			if(trace == true) {
+				if(insertedInMap1 == true && insertedInMap2 == true) {
+					cout << "_HHHHH_46 CallerId=" << callerId <<
+						". Multi-level nested subexpression id " <<
+						seId << " is being inserted into the " <<
+						"multiLevelNestedSubExpressionIdMap with a value of " <<
+						mapValue << ". " <<
+						"It is also being inserted into the "<<
+						"intraMultiLevelNestedSubexpressionLogicalOperatorsMap with " <<
+						"a value of " << logicalOp << ". opCnt=" << opCnt <<
+						", cpCnt=" << cpCnt << "." << endl;
+				} else if(insertedInMap1 == true) {
+					cout << "_HHHHH_47 CallerId=" << callerId <<
+						". Multi-level nested subexpression id " <<
+						seId << " is being inserted into the " <<
+						"multiLevelNestedSubExpressionIdMap with a value of " <<
+						mapValue << ". " <<
+						"However, it is not being inserted into the "<<
+						"intraMultiLevelNestedSubexpressionLogicalOperatorsMap due to insertedInMap2=" <<
+						insertedInMap2 << ", alreadyPresentInImlnsidMap=" <<
+						alreadyPresentInImlnsidMap << ". opCnt=" << opCnt <<
+						", cpCnt=" << cpCnt << "." << endl;
+				} else if(insertedInMap2 == true) {
+					cout << "_HHHHH_48 CallerId=" << callerId <<
+						". Multi-level nested subexpression id " <<
+						seId << " is not being inserted into the " <<
+						"multiLevelNestedSubExpressionIdMap due to both of these not being true: (insertedInMap1=" <<
+						insertedInMap1 << " && presentInInsloMap=" << presentInInsloMap <<
+						"). However, it is being inserted into the "<<
+						"intraMultiLevelNestedSubexpressionLogicalOperatorsMap with " <<
+						"a value of " << logicalOp << ". opCnt=" << opCnt <<
+						", cpCnt=" << cpCnt << "." << endl;
+				} else {
+					cout << "_HHHHH_49 CallerId=" << callerId <<
+						". Multi-level nested subexpression id " <<
+						seId << " is not being inserted into the " <<
+						"multiLevelNestedSubExpressionIdMap and into the " <<
+						"intraMultiLevelNestedSubexpressionLogicalOperatorsMap. " <<
+						"(insertedInMap1="<< insertedInMap1 << " && presentInInsloMap=" <<
+						presentInInsloMap << "), insertedInMap2=" <<
+						insertedInMap2 << ". alreadyPresentInImlnsidMap=" <<
+						alreadyPresentInImlnsidMap << ". opCnt=" << opCnt <<
+						", cpCnt=" << cpCnt << "." << endl;
+				}
+			} // End of if(trace == true)
+		} // End of if(Functions::Collections::size(myTokens) > 2)
+    } // End of insertMultiLevelNestedSeIdAndLogicalOperatorIntoMaps
     // ====================================================================
 } // End of namespace eval_predicate_functions
 // ====================================================================

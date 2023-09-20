@@ -240,11 +240,11 @@ This toolkit came into existence for a specific need with which a large enterpri
 
 5. It allows a rule expression that can refer to boolean, integer, float, string, set, list, map and other nested tuple attributes. In addition to having many built-in data types inside a collection, it allows list of TUPLE by having user defined custom tuple data types inside a list.
 
-6. It allows certain level of subexpression chaining in a rule.
+6. It allows certain level of subexpression chaining i.e. nesting in a rule.
 
-   a. It supports zero or single or multilevel parenthesis in a given rule.
+   a. It supports zero or single-level or multi-level parenthesis in a given rule.
 
-   b. Via multilevel parenthesis, it allows for evaluating nested rules.
+   b. Via multi-level parenthesis, it allows for evaluating nested rules.
 
    c. Within a given subexpression, one must use the same logical operators.
 
@@ -252,13 +252,13 @@ This toolkit came into existence for a specific need with which a large enterpri
    
    a == 'hi' && b contains 'xyz' && g[4] > 6.7 && id % 8 == 3
 
-   e. Single level parenthesis is used within each subexpression in the following example rules:
+   e. Single-level parenthesis is used within each subexpression in the following example rules:
    
    (a == 'hi') && (b contains 'xyz' || g[4] > 6.7 || id % 8 == 3)
 
    (a == "hi") && (b contains "xyz") && (g[4] > 6.7) && (id % 8 == 3)
 
-   f. Multilevel parenthesis is used in the following example rules that are nested:
+   f. Multi-level parenthesis is used in the following example rules that are made of single-level nested subexpressions:
    
    (a == "hi") && ((b contains "xyz" || g[4] > 6.7) && id % 8 == 3)
 
@@ -271,6 +271,14 @@ This toolkit came into existence for a specific need with which a large enterpri
    ((a == "hi" || c endsWith 'pqr') && (b contains "xyz")) || (g[4] > 6.7 || id % 8 == 3)
 
    (((a == 'hi') || (x <= 5) || (t == 3.14) || (p > 7)) && ((j == 3) && (y < 1) && (r == 9)) && s endsWith 'Nation')
+
+   g. Multi-level nested subexpressions are used in the following example rules to make them deeply nested.
+   
+   ((a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')) && (((testId equalsCI 'Happy Path') && (a.rack.hw.vendor equalsCI 'Intel')) || (((a.transport.plane.airliner equalsCI 'bOeInG') || (testId equalsCI 'Happy Path')) && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari')))
+
+   (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')
+
+   (a.transport.plane.airliner equalsCI 'bOeInG' && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari' || (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2'))) && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')
 
 ## Source code
 The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](impl/include/eval_predicate.h) file of this repository.
