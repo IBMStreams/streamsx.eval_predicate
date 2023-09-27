@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Sep/20/2023
+Last modified on: Sep/27/2023
 Author(s): Senthil Nathan (nysenthil@yahoo.com)
 
 This toolkit's public GitHub URL:
@@ -1993,7 +1993,7 @@ namespace eval_predicate_functions {
 	// the usage of attributes (LHS), operations performed (in the middle),
 	// the values to be compared (RHS) and the intra subexpression logical
 	// operators if any. By building that structure once here,
-	// it can be reused when the user application ode calls the eval_predicate
+	// it can be reused when the user application code calls the eval_predicate
 	// function available in this file repeatedly for evaluating a
 	// given expression. It will help in improving the expression evaluation performance.
 	// This subexpression layout list will have a sequence of items as shown below.
@@ -2402,7 +2402,7 @@ namespace eval_predicate_functions {
 
 		   Please search for Sep/20/2023 in this file to get a broader
 		   understanding of how I handle the multi-level nested subexpressions.
-		   As always, I only tested half a dozen example expressions that include
+		   As always, I only tested a dozen example expressions that include
 		   multi-level nested SEs. There will definitely be other forms
 		   of multi-level nested SEs that are not handled adequately.
 		   If that happens in the field, I will have to do more
@@ -2439,7 +2439,7 @@ namespace eval_predicate_functions {
            NestedSubexpressionId="2.2.1.2.4.1", Logical operator="||"
 
            Test cases covering the multi-level nested subexpressions can be found in the
-           EvalPredicateExample.spl (3.7 to 3.12) and FunctionalTests.spl (A51.1 to A51.20).
+           EvalPredicateExample.spl (3.7 to 3.12) and FunctionalTests.spl (A51.1 to A51.21).
     	*********************************************************
     	*/
 
@@ -2540,24 +2540,25 @@ namespace eval_predicate_functions {
 
 					boolean breakFromOpenParenthesisProcessingWhileLoopIfNeeded = true;
 
-					// There are special cases such as the A51.20 test case in
+					// There are special test cases such as the A51.20 and A51.21 in
 					// FunctionalTests.spl will have a reason for us to meet the
 					// condition in this if block.
-					if((subexpressionId == "") && ((idx > 0) && (myBlob[idx-1] == '('))) {
-						// If we get inside this if block, then we have met these conditions.
+					// Senthil made a change in the following statement on Sep/27/2023.
+					if(idx > 0 && myBlob[idx-1] == '(') {
+						// If we reach inside this if block, then we have met these conditions.
 						// selol size is non-zero.
 						// We encountered a new OP.
-						// SE Id is an empty string.
-						// That means, we already completed validating
-						// the very first SE in the full expression.
-						// Since we also passed the test for finding the
-						// previous character as another OP, it is an indication
+						// SE Id is either an empty string or a non-empty string.
+						// These conditions indicate that we already completed validating
+						// the previous SE we encountered in the given expression.
+						// Since we also passed the test for finding that the
+						// previous character is another OP, it is an indication
 						// that there is a new nested SE starting right after the
-						// entire expression's very first SE that we just now
+						// previously completed SE that we just now
 						// validated. In this case, let us not break from the
-						// OP processing white loop so that it can continue to
-						// create the very first SE id of this entire expression as
-						// 1.1 right here in this iteration of the OP processing while loop.
+						// OP processing while loop so that it can continue to
+						// create the SE id of the previously completed subexpression
+						// right here in this iteration of the OP processing while loop.
 						// So, let us not give a chance for the next if-block to
 						// break from the OP processing based on that if block's
 						// conditional check result.
@@ -2663,7 +2664,7 @@ namespace eval_predicate_functions {
 					// We are going to declare the end of this nested subexpression.
 					subexpressionLayoutList[selolSize - 1] = "";
 
-					// Test cases such as A51.19 and A51.20 in FunctionalTests.spl will make it to
+					// Test cases such as A51.19 to A51.21 in FunctionalTests.spl will make it to
 					// go via this part of the OP processing logic.
 					if(trace == true) {
 						cout << "_HHHHH_03 Inside the OP processing block just before getting " <<
@@ -2696,7 +2697,7 @@ namespace eval_predicate_functions {
 					// If it is a multi-level nested expression, then we have to call the following
 					// method in such a way to get an SE ID that follows the format x.y.z instead of x.y.
 					//
-					// You can refer to A51.19 and A51.20 test cases in FunctionalTests.spl file to
+					// You can refer to A51.19 to A51.21 test cases in FunctionalTests.spl file to
 					// see how the following if-else condition will work for the very first part of the
 					// subexpression in those two test cases.
 					//

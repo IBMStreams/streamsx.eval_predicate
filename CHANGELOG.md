@@ -1,5 +1,9 @@
 # Changes
 
+## v1.1.7
+* Sep/27/2023
+* Made a fix to correctly evaluate a new multi-level nested expression pattern as shown in the test case A51.21 in FunctionalTests.spl.
+
 ## v1.1.6
 * Sep/20/2023
 * Made a major redesign to evaluate multi-level nested subexpressions.

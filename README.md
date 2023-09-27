@@ -279,6 +279,8 @@ This toolkit came into existence for a specific need with which a large enterpri
    (a.transport.plane.airliner equalsCI 'bOeInG' && a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')
 
    (a.transport.plane.airliner equalsCI 'bOeInG' && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari' || (testId equalsCI 'Happy Path' || a.rack.hw.vendor equalsCI 'Intel2'))) && ((testId equalsCI 'Happy Path' && a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.plane.airliner equalsCI 'bOeInG2' || testId equalsCI 'Happy Path') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG')) || (testId equalsCI 'Happy Path' && testId equalsCI 'Happy Path') || (testId equalsCI 'Happy Path7' && testId equalsCI 'Happy Path')) && (testId equalsCI 'Happy Path')
+   
+   (a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path') && ((a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG'))))
 
 ## Source code
 The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](impl/include/eval_predicate.h) file of this repository.
