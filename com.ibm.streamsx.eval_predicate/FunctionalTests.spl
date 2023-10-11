@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Sep/27/2023
+Last modified on: Oct/11/2023
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -6960,6 +6960,97 @@ composite FunctionalTests {
 						printStringLn("Testcase A51.21: Evaluation criteria is not met.");
 					} else {
 						printStringLn("Testcase A51.21: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.22 (Nested expression pattern 22)
+					// The following is a rule used in a real-world use case at 
+					// one of the best IBM Streams customers. It has the first and 
+					// third subexpressions as self-enclosed. It then has the second
+					// subexpression with four levels of multi-level nested SEs.
+					// In that second SE, it evaluates certain conditions such that
+					// they will collectively contribute to returning a final false result.
+					//
+					// Tuple schema needed for this rule's data.
+					type NodeProperties_T = rstring ParentTool, rstring MES_CEID, rstring REV_CEID, 
+						rstring EquipmentGroup, rstring FunctionalArea, rstring EntityType, 
+						rstring Cluster, list<rstring> Processes, list<rstring> VirtualLines,
+						rstring OwnedBy, rstring Location, rstring CurrentSite, list<rstring> ToolGroups;
+
+					type NodeStatus_T = list<rstring> Lots, rstring Availability, rstring Comments,
+						rstring EntityState, rstring Event, rstring StatusCategory1, 
+						rstring StatusCategory2, rstring StatusCategory3, rstring StatusCategory4, 
+						map<rstring,rstring> AttributesMap,	rstring StatusCategory5, 
+						rstring StatusCategory6,rstring StatusCategory7, rstring StatusCategory8, 
+						rstring StatusCategory9, rstring UserName;
+
+					type NodeV_T = NodeProperties_T Properties, NodeStatus_T Status, 
+						timestamp PublishTime, rstring MWTimestamp;
+
+					type Node_T =  rstring Key, NodeV_T Value; 
+					
+					// Variable declaration that uses the tuple schema defined above.
+					mutable Node_T myNode = (Node_T){};
+					myNode.Value.Status.Event = "PATCHING";
+					myNode.Value.Status.UserName = "";        
+					myNode.Value.Status.EntityState = "";
+					myNode.Value.Properties.OwnedBy = 'SAD';
+					myNode.Value.Status.Availability = "Down";
+					myNode.Value.Status.StatusCategory2 = 'StatusCategory2';
+					myNode.Value.Status.StatusCategory3 = 'StatusCategory3';
+					myNode.Value.Status.StatusCategory4 = 'StatusCategory4';
+										
+					_rule = "(Value.Status.Event equalsCI 'PATCHING') && ((Value.Status.UserName containsCI 'EWR') || (Value.Status.EntityState equalsCI 'ENGINEERING') || ((Value.Properties.OwnedBy containsCI 'FER') && ((Value.Status.Availability equalsCI 'Up') || ((Value.Status.Availability equalsCI 'Down') && (Value.Status.StatusCategory3 containsCI 'StatusCategory3'))))) && (Value.Status.StatusCategory4 equalsCI 'StatusCategory4')";
+					result = eval_predicate(_rule, myNode, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.22: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.22: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.22: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.23 (Nested expression pattern 23)
+					// The following rule is same as the previous one except 
+					// it checks with a slightly different tuple attribute 
+					// values to meet all the evaluation conditions and 
+					// then to return true.
+					//
+					// Set these two tuple attributes to specific values.					
+					myNode.Value.Status.UserName = "EWR";
+					myNode.Value.Status.EntityState = "ENGINEERING";					
+					
+					_rule = "(Value.Status.Event equalsCI 'PATCHING') && ((Value.Status.UserName containsCI 'EWR') || (Value.Status.EntityState equalsCI 'ENGINEERING') || ((Value.Properties.OwnedBy containsCI 'SAD') && ((Value.Status.Availability equalsCI 'Up') || ((Value.Status.Availability equalsCI 'Down') && (Value.Status.StatusCategory3 containsCI 'StatusCategory3'))))) && (Value.Status.StatusCategory4 equalsCI 'StatusCategory4')";
+					result = eval_predicate(_rule, myNode, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.23: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.23: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.23: Evaluation execution failed. Error=" + (rstring)error);
+					}
+					
+					// A51.24 (Nested expression pattern 24)
+					// The following rule is same as the previous one except 
+					// it checks with a slightly different tuple attribute 
+					// values to meet all the evaluation conditions and 
+					// then to return true.
+					//
+					// Set these three tuple attributes to specific values.
+					myNode.Value.Status.EntityState = "SIGNALING";
+					myNode.Value.Properties.OwnedBy = 'D1D';
+					myNode.Value.Status.Availability = "Up";
+					
+					_rule = "(Value.Status.EntityState equalsCI 'SIGNALING') && ((Value.Properties.OwnedBy notStartsWithCI 'D1D') || ((Value.Properties.OwnedBy startsWithCI 'D1D') && (Value.Status.Availability equalsCI 'Up')))";
+					result = eval_predicate(_rule, myNode, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.24: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.24: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.24: Evaluation execution failed. Error=" + (rstring)error);
 					}
 					// -------------------------
 					

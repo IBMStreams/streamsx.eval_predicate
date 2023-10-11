@@ -7,7 +7,7 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Sep/27/2023
+Last modified on: Oct/11/2023
 Author(s): Senthil Nathan (nysenthil@yahoo.com)
 
 This toolkit's public GitHub URL:
@@ -102,7 +102,7 @@ then mapping them into the tuple attributes again via other modules
 that are already part of the SPL runtime code. That one was designed
 and built at least by 4 former colleagues over a period of 8 years.
 To make changes in that existing implementation with thousands of
-lines of comment free complex C++ logic proved to be a tall order for me.
+lines of complex C++ logic with no commentary proved to be so hard for me.
 So, I took a fresh approach to write this new eval_predicate function
 with my own ideas along with sufficient commentary to explain the logic.
 That obviously led to implementation and feature differences between
@@ -916,7 +916,7 @@ namespace eval_predicate_functions {
     		if(trace == true) {
 				cout << "==== BEGIN eval_predicate trace 11a ====" << endl;
 				cout << "Full expression=" << expr << endl;
-				cout << "Inserted the expression in the eval plan cache." << endl;
+				cout << "Inserted the validated expression in the eval plan cache." << endl;
 				cout << "Total number of expressions in the cache=" <<
 					expEvalCache->size() << endl;
 				cout << "==== END eval_predicate trace 11a ====" << endl;
@@ -2389,7 +2389,7 @@ namespace eval_predicate_functions {
 		   nested subexpressions. It is a very involved one to
 		   handle this particular case. I added support for this
 		   on Sep/20/2023 based on a customer request. As the logic
-		   is complex to document here as an orderly sequence, it is
+		   is complex to document here in an orderly sequence, it is
 		   recommended to look at the specific code changes made and
 		   the commentary surrounding it. This logic is mainly concentrated
 		   in the CP (Close Parenthesis) processing block below as well as
@@ -2402,11 +2402,12 @@ namespace eval_predicate_functions {
 
 		   Please search for Sep/20/2023 in this file to get a broader
 		   understanding of how I handle the multi-level nested subexpressions.
-		   As always, I only tested a dozen example expressions that include
+		   As always, I only tested three dozen example expressions that include
 		   multi-level nested SEs. There will definitely be other forms
 		   of multi-level nested SEs that are not handled adequately.
 		   If that happens in the field, I will have to do more
-		   enhancements in the future as needed.
+		   enhancements in the future as needed as I did on these dates:
+		   Sep/27/2023, Oct/11/2023
 
 		   A few multi-level nested subexpression examples are shown below.
 
@@ -2439,7 +2440,7 @@ namespace eval_predicate_functions {
            NestedSubexpressionId="2.2.1.2.4.1", Logical operator="||"
 
            Test cases covering the multi-level nested subexpressions can be found in the
-           EvalPredicateExample.spl (3.7 to 3.12) and FunctionalTests.spl (A51.1 to A51.21).
+           EvalPredicateExample.spl (3.7 to 3.12) and FunctionalTests.spl (A51.7 to A51.24).
     	*********************************************************
     	*/
 
@@ -2540,7 +2541,7 @@ namespace eval_predicate_functions {
 
 					boolean breakFromOpenParenthesisProcessingWhileLoopIfNeeded = true;
 
-					// There are special test cases such as the A51.20 and A51.21 in
+					// There are special test cases such as A51.20 to A51.24 in
 					// FunctionalTests.spl will have a reason for us to meet the
 					// condition in this if block.
 					// Senthil made a change in the following statement on Sep/27/2023.
@@ -2664,7 +2665,7 @@ namespace eval_predicate_functions {
 					// We are going to declare the end of this nested subexpression.
 					subexpressionLayoutList[selolSize - 1] = "";
 
-					// Test cases such as A51.19 to A51.21 in FunctionalTests.spl will make it to
+					// Test cases such as A51.19 to A51.24 in FunctionalTests.spl will make it to
 					// go via this part of the OP processing logic.
 					if(trace == true) {
 						cout << "_HHHHH_03 Inside the OP processing block just before getting " <<
@@ -2697,7 +2698,7 @@ namespace eval_predicate_functions {
 					// If it is a multi-level nested expression, then we have to call the following
 					// method in such a way to get an SE ID that follows the format x.y.z instead of x.y.
 					//
-					// You can refer to A51.19 to A51.21 test cases in FunctionalTests.spl file to
+					// You can refer to A51.19 to A51.24 test cases in FunctionalTests.spl file to
 					// see how the following if-else condition will work for the very first part of the
 					// subexpression in those two test cases.
 					//
@@ -8560,6 +8561,7 @@ namespace eval_predicate_functions {
     		// Senthil modified this section of the code on Sep/20/2023 to
     		// handle the evaluation of multi-level nested SEs in a proper way.
     		boolean nestedEvalResult = false;
+    		boolean multiLevelNestedSubexpressionEvalResultToBeStored = false;
 			int32 listSize = Functions::Collections::size(nestedSubexpressionEvalResults);
 
 			if(trace == true) {
@@ -8649,33 +8651,14 @@ namespace eval_predicate_functions {
     			rstring myLogicalOp = "";
     			rstring seId = "";
 
-    			for(int i=0; i<numberOfSeIds; i++) {
+    			// Senthil added new logic on Oct/11/2023 to do a preliminary
+    			// consolidation of the multi-level nested SE evaluation results in
+    			// reverse order from right to left i.e. from lexically
+    			// high numbered SE id to lower numbered SE id.
+    			//
+    			// This for loop iterates a list in the reverse order. i.e. n-1 to 0.
+    			for(int i=numberOfSeIds-1; i>=0; i--) {
     				seId = multiLevelNestedSubexpressionIdsGettingEvaluated[i];
-
-    				if(trace == true) {
-						cout << "_HHHHH_39 Stage 1 in the multi-level nested SE evaluation. " <<
-							"i=" << i+1 << " of " << numberOfSeIds << ", seId=" << seId << ", myLogicalOp=" <<
-							myLogicalOp << ", current nested eval result=" << nestedEvalResult <<
-							", next nested eval result=" << nestedSubexpressionEvalResults[i] << endl;
-    				}
-
-					if(myLogicalOp == "&&") {
-						// Let us && it with the previously computed and consolidated eval result thus far.
-						nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[i];
-					} else if(myLogicalOp == "||") {
-						// Let us || it with the previously computed and consolidated eval result thus far.
-						nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[i];
-					} else {
-						// Logical operator is set to an empty string. It indicates that
-						// we are at the beginning of a new multi-level nested SE group.
-						// Let us get the eval result of the very first SE id in this group.
-						nestedEvalResult = nestedSubexpressionEvalResults[i];
-					}
-
-    				if(trace == true) {
-						cout << "_HHHHH_40 Stage 2 in the multi-level nested SE evaluation. " <<
-							"New nested eval result=" << nestedEvalResult << endl;
-    				}
 
     				// Get the logical operator associated with the current SE id.
     				if(Functions::Collections::has(intraMultiLevelNestedSELogicalOpMap, seId) == true) {
@@ -8684,32 +8667,104 @@ namespace eval_predicate_functions {
     					error = SE_ID_NOT_FOUND_IN_INTRA_MULTI_LEVEL_NESTED_SE_LOGICAL_OP_MAP;
 
         				if(trace == true) {
-    						cout << "_HHHHH_41 Multi-level nested SE ID " << seId <<
+    						cout << "_HHHHH_39 Multi-level nested SE ID " << seId <<
     							" is not a valid key in the intraMultiLevelNestedSELogicalOpMap" << endl;
         				}
 
         				return(false);
     				}
 
+    				if(trace == true) {
+						cout << "_HHHHH_40 Stage 1 in the multi-level nested SE evaluation. " <<
+							"i=" << i+1 << " of " << numberOfSeIds << ", seId=" << seId << ", myLogicalOp=" <<
+							myLogicalOp << ", current nested eval result=" << nestedEvalResult <<
+							", next nested eval result=" << nestedSubexpressionEvalResults[i] << endl;
+    				}
+
+    				// We can now combine the eval results of the adjacent
+    				// multi-level nested SE groups as much as possible.
+    				// It is a preliminary eval result consolidation.
+					if(myLogicalOp == "&&") {
+						// Let us && it with the previously computed and consolidated eval result thus far.
+						nestedEvalResult = nestedEvalResult && nestedSubexpressionEvalResults[i];
+					} else if(myLogicalOp == "||") {
+						// Let us || it with the previously computed and consolidated eval result thus far.
+						nestedEvalResult = nestedEvalResult || nestedSubexpressionEvalResults[i];
+					} else {
+						// Logical operator is set to an empty string. It indicates that
+						// we are at the end of a given multi-level nested SE group. Let us get
+						// the eval result of the very last SE id in this group.
+						// Before we do that, let us preserve the already computed result of
+						// the adjacent higher order multi-level nested SE group as we are
+						// traversing the list in reverse order. That preserved value will be
+						// added to the multi-level nested SE list in the next if block below.
+						multiLevelNestedSubexpressionEvalResultToBeStored = nestedEvalResult;
+						nestedEvalResult = nestedSubexpressionEvalResults[i];
+					}
+
+    				if(trace == true) {
+    					if(myLogicalOp == "") {
+							cout << "_HHHHH_41 Stage 2 in the multi-level nested SE evaluation. " <<
+								"New nested eval result=" << nestedEvalResult <<
+								" obtained via a direct variable assignment." << endl;
+    					} else {
+							cout << "_HHHHH_41 Stage 2 in the multi-level nested SE evaluation. " <<
+								"New nested eval result=" << nestedEvalResult <<
+								" obtained by combining via a logical " << myLogicalOp <<
+								" operator." << endl;
+    					}
+    				}
+
     				// Check the logical operator set to the current multi-level nested SE Id to
-    				// see if it is the very last one in the given nested SE group.
-    				if(myLogicalOp == "") {
-    					// This is the end of a current multi-level nested SE group.
-    					// We can store the eval result computed for this nested SE group.
-    					Functions::Collections::appendM(multiLevelNestedSubexpressionEvalResults, nestedEvalResult);
+    				// see if it is the very last one in a given nested SE group. If that is the case,
+    				// we can store whatever evaluation result we have computed so far for the
+    				// adjacent higher order nested SE group we visited earlier that appears
+    				// on the right side of the current one going in the reverse order (right to left).
+    				// Do this check only if we are not at the very last nested SE id.
+    				if((i < numberOfSeIds-1) && (myLogicalOp == "")) {
+    					// This is the end of a given multi-level nested SE group.
+    					// We can store the eval result computed thus far from an
+    					// adjacent higher order nested SE group that appears to its right.
+    					Functions::Collections::appendM(multiLevelNestedSubexpressionEvalResults,
+    						multiLevelNestedSubexpressionEvalResultToBeStored);
+
+						// If this is the very first SE id in the list i.e. i = 0, then we have to
+						// treat itself as a standalone (single unit) multi-level nested SE and its
+						// eval result must be stored. This is because, our for loop will end after this
+						// iteration as we are doing the list iteration in reverse order i.e. n-1 to 0.
+    					// So, we will now append the eval result obtained from the
+    					// very first SE id as well.
+						if(i == 0) {
+	    					Functions::Collections::appendM(multiLevelNestedSubexpressionEvalResults,
+	    						nestedEvalResult);
+						}
 
     					if(trace == true) {
-    						cout << "_HHHHH_42 Stage 3 in the multi-level nested SE evaluation. " <<
-								"Stored the nested eval result=" << nestedEvalResult <<
+    						cout << "_HHHHH_42a Stage 3a in the multi-level nested SE evaluation. " <<
+								"Stored the nested eval result=" <<
+								multiLevelNestedSubexpressionEvalResultToBeStored <<
 								" in the multiLevelNestedSubexpressionEvalResults list." << endl;
+
+    						if(i == 0) {
+        						cout << "_HHHHH_42b Stage 3b in the multi-level nested SE evaluation. " <<
+    								"Stored the nested eval result=" << nestedEvalResult <<
+    								" for the very first SE ID " << seId <<
+									" in the multiLevelNestedSubexpressionEvalResults list." << endl;
+    						}
     					}
     				}
     			} // End of for loop.
 
-    			// At this time, we have completed the evaluation of the individual
-    			// nested SEs that are part of a multi-level nested SE.
-    			// We can now combine the nested eval results computed above for the
-    			// entire multi-level nested SE.
+    			// Since we combined the eval results by iterating the
+    			// multi-level nested se id list in reverse order, let us
+    			// reverse the list containing the preliminary consolidated
+    			// results to get it back in the normal (left to right) order.
+    			Functions::Collections::reverseM(multiLevelNestedSubexpressionEvalResults);
+
+    			// At this time, we have completed the preliminary consolidation of
+    			// the individual nested SEs that are part of a multi-level nested SE.
+    			// We can now do the final consolidation of combining the nested eval results
+    			// computed above for the entire multi-level nested SE.
     			//
     			// Let us get the intra nested SE logical operator.
     			// We can simply get the one associated with the
