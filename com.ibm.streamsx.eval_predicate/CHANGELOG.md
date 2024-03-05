@@ -1,5 +1,12 @@
 # Changes
 
+## v1.1.9
+* Mar/05/2024
+* Rearranged this toolkit's directory to have a top-level directory that in turn contains two subdirectories i.e. com.ibm.streamsx.eval_predicate subdirectory containing the main C++ code for this toolkit and the samples subdirectory containing two comprehensive examples showcasing the eval_predicate features.
+* Both the EvalPredicateExample and FunctionalTests applications are now placed in their own subirectories within the samples directory in a new namespace com.ibm.streamsx.eval_predicate.test.
+* Other than the above-mentioned directory and file restructuring, there are no functional changes done in this release.
+* User applications that want to use this toolkit will have to now have this statement at the top of their SPL file(s): use com.ibm.streamsx.eval_predicate::*;
+
 ## v1.1.8
 * Oct/11/2023
 * Made a fix to correctly evaluate new multi-level nested expression patterns as shown in the test cases A51.22 to A51.24 in FunctionalTests.spl.

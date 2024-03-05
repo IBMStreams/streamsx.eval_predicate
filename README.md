@@ -285,16 +285,16 @@ This toolkit came into existence for a specific need with which a large enterpri
    (Value.Status.Event equalsCI 'PATCHING') && ((Value.Status.UserName containsCI 'EWR') || (Value.Status.EntityState equalsCI 'ENGINEERING') || ((Value.Properties.OwnedBy containsCI 'FER') && ((Value.Status.Availability equalsCI 'Up') || ((Value.Status.Availability equalsCI 'Down') && (Value.Status.StatusCategory3 containsCI 'StatusCategory3'))))) && (Value.Status.StatusCategory4 equalsCI 'StatusCategory4')
 
 ## Source code
-The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](impl/include/eval_predicate.h) file of this repository.
+The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](com.ibm.streamsx.eval_predicate/impl/include/eval_predicate.h) file of this repository.
 
 ## Example applications
-There is a well documented and well tested example application available in the [EvalPredicateExample.spl](com.ibm.streamsx.eval_predicate/EvalPredicateExample.spl) file of this repository. Users can browse that example code, compile and run it to become familiar with the usage of the **eval_predicate** function. There is also [FunctionalTests.spl](com.ibm.streamsx.eval_predicate/FunctionalTests.spl) which is a comprehensive application that tests the major code paths in the **eval_predicate** function.
+There is a well documented and well tested example application available in the [EvalPredicateExample.spl](samples/01_eval_predicate_example/com.ibm.streamsx.eval_predicate.test/EvalPredicateExample.spl) file of this repository. Users can browse that example code, compile and run it to become familiar with the usage of the **eval_predicate** function. There is also [FunctionalTests.spl](samples/02_eval_predicate_functional_tests/com.ibm.streamsx.eval_predicate.test/FunctionalTests.spl) which is a comprehensive application that tests the major code paths in the **eval_predicate** function.
 
-At the top-level of this toolkit directory, a *Makefile* can be found. To build the two example applications mentioned above, one can type `make` from a Linux terminal window by being in that top-level directory. Alternatively, the extracted toolkit directory can also be imported into IBM Streams Studio or Microsoft Visual Studio Code. Before importing, it is a must to rename that Makefile in that top-level directory to *Makefile.org*. Only with that renaming of the Makefile, the example applications will build correctly after importing the toolkit into the Studio development environment.
+A *Makefile* can be found in each of the example applications mentioned above. One can type `make` from a Linux terminal window by being inside the specific example directory. Alternatively, the extracted toolkit directory and the individual example directories can also be imported into IBM Streams Studio or Microsoft Visual Studio Code. Before importing, it is a must to rename that Makefile in that example directory to *Makefile.org*. Only with that renaming of the Makefile, the example applications will build correctly after importing the toolkit into the Studio development environment.
 
 ## Getting an official version of this toolkit
 One can clone this repository as needed for making code changes. But, for users who only want to use this toolkit in their applications, it is better to download an official version of this toolkit that has a release tag. In the right hand side column of this web page, you will see the *Releases* section. There, you can click on the *Latest* button and then download the tar.gz file which can be extracted for ready use as a dependency in your IBM Streams application project.
 
 ## WHATS NEW
 
-see: [CHANGELOG.md](CHANGELOG.md)
+see: [CHANGELOG.md](com.ibm.streamsx.eval_predicate/CHANGELOG.md)

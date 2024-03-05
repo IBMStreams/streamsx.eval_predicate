@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2023
+# Copyright IBM Corp. 2021, 2024
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Sep/20/2023
+Last modified on: Mar/05/2024
 
 This is an example application that shows how to use the
 eval_predicate function to evaluate an SPL expression a.k.a
@@ -142,7 +142,11 @@ importing the toolkit into the Studio development environment.
 ==================================================================
 */
 // eval_predicate function is available from this namespace.
-namespace com.ibm.streamsx.eval_predicate;
+namespace com.ibm.streamsx.eval_predicate.test;
+
+// We have to declare the use of this namespace from where we will get the
+// eval_predicate native functions that are called from this application.
+use com.ibm.streamsx.eval_predicate::*;
 
 // This is the main composite for this application.
 composite EvalPredicateExample {

@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2023
+# Copyright IBM Corp. 2021, 2024
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Oct/11/2023
+Last modified on: Mar/05/2024
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -68,7 +68,11 @@ the Makefile, the example application will build correctly after
 importing the toolkit into the Studio development environment.
 ==================================================================
 */
-namespace com.ibm.streamsx.eval_predicate;
+namespace com.ibm.streamsx.eval_predicate.test;
+
+// We have to declare the use of this namespace from where we will get the
+// eval_predicate native functions that are called from this application.
+use com.ibm.streamsx.eval_predicate::*;
 
 // This is the main composite for this application.
 composite FunctionalTests {
