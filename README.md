@@ -1,5 +1,8 @@
 # Rule processor for IBM Streams
 
+## Note from the toolkit author
+This toolkit created by Senthil Nathan is a differentiator for key customers. He is now an independent software consultant. To benefit from the compelling features of this asset, for any enhancements, any need for a new powerful toolkit as well as for creating new data streaming solutions, customers can email senthil@moonraytech.com to reach him. Thank you.
+
 ## Purpose
 This toolkit offers an improved and a simpler facility for users to let their externally authored business rules to be consumed either statically or dynamically from within the IBM Streams SPL application code and then process (evaluate) them as the data flows through the application pipeline. Such an evaluation returns a true or false result for every rule that gets processed to indicate whether the rule expression criteria is met or not met.
 
