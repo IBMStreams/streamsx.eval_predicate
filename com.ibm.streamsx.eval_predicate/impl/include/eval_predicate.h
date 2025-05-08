@@ -7,14 +7,14 @@
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Oct/11/2023
-Author(s): Senthil Nathan (nysenthil@yahoo.com)
+Last modified on: May/08/2025
+Author(s): Senthil Nathan (senthil@moonraytech.com)
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
 
-This file contains C++ native function(s) provided in the
-eval_predicate toolkit. It has very elaborate logic to
+This file contains C++ native function(s) specified in the
+eval_predicate toolkit function model. It has very elaborate logic to
 evaluate a user given expression a.k.a user defined rule.
 It differs from the IBM Streams built-in function
 evalPredicate in the following ways.
