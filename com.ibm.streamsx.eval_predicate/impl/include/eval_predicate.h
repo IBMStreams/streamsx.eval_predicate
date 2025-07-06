@@ -1,14 +1,22 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2023
+# Copyright IBM Corp. 2021, 2025
 ==============================================
 */
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: May/08/2025
+Last modified on: July/06/2025
 Author(s): Senthil Nathan (senthil@moonraytech.com)
+
+Senthil wrote the code below on his own initiative and with his 
+original intellectual ideas and not out of any formally managed or 
+funded work by IBM. He did the entire work needed for this toolkit 
+much after IBM divested its Streams product to another company around May/2021.
+The core logic below and its inner workings are derivatives of Senthil's work and
+effort. Senthil has plans to make changes to it in the future to create other
+assets centered around the functions and features he infused into this toolkit.
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
