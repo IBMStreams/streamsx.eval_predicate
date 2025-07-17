@@ -1,14 +1,15 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2024
+# Copyright IBM Corp. 2021, 2025
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Mar/28/2021
-Last modified on: Mar/05/2024
+Last modified on: Jul/16/2025
+Author(s): Senthil Nathan senthil@moonraytech.com
 
 This application is meant for doing several hundred 
 functional tests to provide as much coverage as possible to 
@@ -7056,6 +7057,64 @@ composite FunctionalTests {
 					} else {
 						printStringLn("Testcase A51.24: Evaluation execution failed. Error=" + (rstring)error);
 					}
+
+                                        // This data preparation is done for the next two test cases.
+					mutable Weather_t mw = {};
+					mw.city = "New York";
+					mw.humidity = 12.87;
+					insertM(mw.hourlyTemperatureMap,
+						333343l, 87.355);
+					insertM(mw.hourlyTemperatureMap,
+						443536l, 84.31);
+					insertM(mw.hourlyTemperatureMap,
+						592311l, 85.72);
+					insertM(mw.hourlyTemperatureMap,
+						693127l, 86.128);
+					insertM(mw.hourlyTemperatureMap,
+						729841l, 85.853);
+					mw.sunnyDay = true;
+					          
+					// A51.25 (Nested expression pattern 25)
+					// The following rule is to test a specific rule expression
+                                        // format with a sequence of subexpressions that are all
+                                        // nested in multiple levels. It checks with the tuple attribute 
+					// values prepared above to meet all the evaluation conditions and 
+					// then to return true.
+					// 
+                                        // It takes the following format.
+                                        // (A && B && C && D && ((E && (F || G || H)) || (I || J || N || K || L || M)))
+                                        //
+                                        _rule = "((city notContainsCI 'Boston') && (city notContainsCI 'Chicago') && (city notContainsCI 'Miami') && (city notContainsCI 'Denver') && (((city equalsCI 'New York') && ((city containsCI 'New York') || (city containsCI 'New') || (city containsCI 'York'))) || ((city containsCI 'ork') || (city containsCI 'W Y') || (city containsCI 'ew') || (city containsCI 'New') || (city containsCI 'York') || (  city containsCI 'ew Yo'))))";
+					result = eval_predicate(_rule, mw, error, $EVAL_PREDICATE_TRACING);
+					
+					if(result == true) {
+						printStringLn("Testcase A51.25: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.25: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.25: Evaluation execution failed. Error=" + (rstring)error);
+					}
+
+					// A51.26 (Nested expression pattern 26)
+					// The following rule is to test a specific rule expression
+                                        // format where two self-enclosed multi-level subexpressions are  
+                                        // placed on each side of a logical operator. It checks with the 
+                                        // tuple attribute values prepared above to meet all the 
+                                        // evaluation conditions and then to return true.
+					// 
+                                        // It takes the following format.
+                                        // (A && C && B && D) && ((E && (F || G || H)) || (I || J || N || K || L || M))
+                                        //
+                                        _rule = "((city notContainsCI 'Boston') && (city notContainsCI 'Chicago') && (city notContainsCI 'Miami') && (city notContainsCI 'Denver')) && (((city equalsCI 'New York') && ((city containsCI 'New York') || (city containsCI 'New') || (city containsCI 'York'))) || ((city containsCI 'ork') || (city containsCI 'W Y') || (city containsCI 'ew') || (city containsCI 'New') || (city containsCI 'York') || (  city containsCI 'ew Yo')))";
+					result = eval_predicate(_rule, mw, error, $EVAL_PREDICATE_TRACING);
+
+					if(result == true) {
+						printStringLn("Testcase A51.26: Evaluation criteria is met.");
+					} else if(result == false && error == 0) {
+						printStringLn("Testcase A51.26: Evaluation criteria is not met.");
+					} else {
+						printStringLn("Testcase A51.26: Evaluation execution failed. Error=" + (rstring)error);
+					}					
 					// -------------------------
 					
 					// A52.1 (list<TUPLE>)

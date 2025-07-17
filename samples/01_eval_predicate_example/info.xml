@@ -3,7 +3,7 @@
   <info:identity>
     <info:name>01_eval_predicate_example</info:name>
     <info:description>Simple example that showcases the major eval_predicate features.</info:description>
-    <info:version>1.1.9</info:version>
+    <info:version>1.2.0</info:version>
     <info:requiredProductVersion>4.2.0.0</info:requiredProductVersion>
   </info:identity>
   <info:dependencies>

@@ -1,5 +1,10 @@
 # Changes
 
+## v1.2.0
+* Jul/16/2025
+* Added support for handling a rule expression format where two self-enclosed multi-level subexpressions are placed on each side of a logical operator.
+* Both the EvalPredicateExample and FunctionalTests applications are added with the required test cases for the new feature mentioned above.
+
 ## v1.1.9
 * Mar/05/2024
 * Rearranged this toolkit's directory to have a top-level directory that in turn contains two subdirectories i.e. com.ibm.streamsx.eval_predicate subdirectory containing the main C++ code for this toolkit and the samples subdirectory containing two comprehensive examples showcasing the eval_predicate features.

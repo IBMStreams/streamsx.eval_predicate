@@ -1,7 +1,7 @@
 # Rule processor for IBM Streams
 
 ## Note from the toolkit author
-This toolkit created by Senthil Nathan is a value differentiator for key customers. He created it on his own initiative and with his original intellectual ideas and not out of any formally managed or funded work by IBM. He did the entire work needed for this toolkit much after IBM divested its Streams product to another company around May/2021. He is now an independent software consultant. To benefit from the compelling features of this asset, for any enhancements, any need for a new powerful toolkit as well as for creating new streaming data analytics solutions, customers can email senthil@moonraytech.com to reach him. Thank you.
+This toolkit created by Senthil Nathan is a value differentiator for key customers. He created it on his own initiative and with his original intellectual ideas and not out of any formally managed or funded work by IBM. He did the entire work needed for this toolkit much after IBM divested its Streams product to another company around May/2021 as well as after Oct/2024 when he left IBM. He is now an independent software consultant. To benefit from the compelling features of this asset, for any enhancements, any need for a new powerful toolkit as well as for creating new streaming data analytics solutions, customers can email senthil@moonraytech.com to reach him. Thank you.
 
 ## Purpose
 This toolkit offers an improved and a simpler facility for users to let their externally authored business rules to be consumed either statically or dynamically from within the IBM Streams SPL application code and then process (evaluate) them as the data flows through the application pipeline. Such an evaluation returns a true or false result for every rule that gets processed to indicate whether the rule expression criteria is met or not met.
@@ -286,6 +286,10 @@ This toolkit came into existence for a specific need with which a large enterpri
    (a.transport.plane.airliner equalsCI 'bOeInG') && (a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && ((testId equalsCI 'Happy Path') && ((a.rack.hw.vendor equalsCI 'Intel') || ((a.transport.cars.autoMaker equalsCI 'Enzo Ferrari') && (a.transport.plane.airliner equalsCI 'bOeInG'))))
    
    (Value.Status.Event equalsCI 'PATCHING') && ((Value.Status.UserName containsCI 'EWR') || (Value.Status.EntityState equalsCI 'ENGINEERING') || ((Value.Properties.OwnedBy containsCI 'FER') && ((Value.Status.Availability equalsCI 'Up') || ((Value.Status.Availability equalsCI 'Down') && (Value.Status.StatusCategory3 containsCI 'StatusCategory3'))))) && (Value.Status.StatusCategory4 equalsCI 'StatusCategory4')
+
+   ((city notContainsCI 'Boston') && (city notContainsCI 'Chicago') && (city notContainsCI 'Miami') && (city notContainsCI 'Denver') && (((city equalsCI 'New York') && ((city containsCI 'New York') || (city containsCI 'New') || (city containsCI 'York'))) || ((city containsCI 'ork') || (city containsCI 'W Y') || (city containsCI 'ew') || (city containsCI 'New') || (city containsCI 'York') || (  city containsCI 'ew Yo'))))
+
+   ((city notContainsCI 'Boston') && (city notContainsCI 'Chicago') && (city notContainsCI 'Miami') && (city notContainsCI 'Denver')) && (((city equalsCI 'New York') && ((city containsCI 'New York') || (city containsCI 'New') || (city containsCI 'York'))) || ((city containsCI 'ork') || (city containsCI 'W Y') || (city containsCI 'ew') || (city containsCI 'New') || (city containsCI 'York') || (  city containsCI 'ew Yo')))
 
 ## Source code
 The complete C++ logic for the **eval_predicate** function is available in the [eval_predicate.h](com.ibm.streamsx.eval_predicate/impl/include/eval_predicate.h) file of this repository.
