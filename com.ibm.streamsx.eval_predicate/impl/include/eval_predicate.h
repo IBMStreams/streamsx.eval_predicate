@@ -1,7 +1,7 @@
 /*
 ==============================================
-# Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2025
+# Licensed Materials - Property of MRT
+# Copyright MoonRay Technologies, LLC. 2021, 2026
 ==============================================
 */
 /*
@@ -15,7 +15,7 @@ original intellectual ideas and not out of any formally managed or
 funded work by IBM. He did the entire work needed for this toolkit 
 much after IBM divested its Streams product to another company around 
 May/2021 as well as after Oct/2024 when he left IBM to become an 
-independent software consultant. The core logic below and its 
+independent software consultant via MRT. The core logic below and its 
 inner workings are derivatives of Senthil's work and effort.
 Senthil has plans to make changes to it in the future to create other
 assets centered around the functions and features he infused into this toolkit.
