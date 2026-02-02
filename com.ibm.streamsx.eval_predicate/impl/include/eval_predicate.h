@@ -1,24 +1,32 @@
 /*
-==============================================
-# Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2021, 2025
-==============================================
+=================================================
+# Licensed Materials - Property of MRT
+# Copyright MoonRay Technologies, LLC. 2021, 2026
+=================================================
 */
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Jul/16/2025
+Last modified on: Feb/01/2026
 Author(s): Senthil Nathan senthil@moonraytech.com
 
 Senthil wrote the code below on his own initiative and with his 
 original intellectual ideas and not out of any formally managed or 
-funded work by IBM. He did the entire work needed for this toolkit 
+funded work by IBM. He did the major work needed for this toolkit 
 much after IBM divested its Streams product to another company around 
 May/2021 as well as after Oct/2024 when he left IBM to become an 
-independent software consultant. The core logic below and its 
-inner workings are derivatives of Senthil's work and effort.
-Senthil has plans to make changes to it in the future to create other
-assets centered around the functions and features he infused into this toolkit.
+independent software consultant via MRT. The core logic below and its 
+inner workings are derivatives of Senthil's work and effort. It carries
+his full ownership as it is born out of his thinking to help an
+important customer that fetched multi-year revenue for IBM even after
+IBM disowned IBM Streams and even after Senthil was no longer a
+regular emplyee of IBM. By holding full ownership of the entire code
+in this toolkit, he continues to enhance it by investing his own
+time and money. Senthil has plans to make changes to it in the future to 
+create other assets centered around the functions and features he 
+infused into this toolkit. MRT carries the full rights for all of
+the code below in terms of usage, reselling, and porting it to other
+event streaming analytics platforms and products.
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate

@@ -1,5 +1,9 @@
 # Changes
 
+## v1.2.1
+* Feb/01/2026
+* Made changes in the code header comments.
+
 ## v1.2.0
 * Jul/16/2025
 * Added support for handling a rule expression format where two self-enclosed multi-level subexpressions are placed on each side of a logical operator.

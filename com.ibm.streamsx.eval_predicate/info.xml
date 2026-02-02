@@ -4,7 +4,7 @@
  <info:identity>
    <info:name>com.ibm.streamsx.eval_predicate</info:name>
    <info:description>Toolkit for user defined rule (expression) processing</info:description>
-   <info:version>1.2.0</info:version>
+   <info:version>1.2.1</info:version>
    <info:requiredProductVersion>4.2.1.6</info:requiredProductVersion>
  </info:identity>
  <info:dependencies/>
