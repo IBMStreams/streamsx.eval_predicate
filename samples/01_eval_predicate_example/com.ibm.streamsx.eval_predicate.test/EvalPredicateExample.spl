@@ -1,14 +1,16 @@
 /*
-==================================================
-# Licensed Materials - Property of MRT
-# Copyright MoonRay Technologies, LLC. 2021, 2026
-==================================================
+====================================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2021, 2026
+# 
+# Full authorship credit: MoonRay Technologies, LLC.
+====================================================
 */
 
 /*
 ==================================================================
 First created on: Mar/05/2021
-Last modified on: Feb/01/2026
+Last modified on: Feb/09/2026
 Author(s): Senthil Nathan senthil@moonraytech.com
 
 This is an example application that shows how to use the

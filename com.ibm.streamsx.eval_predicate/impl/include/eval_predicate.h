@@ -1,32 +1,30 @@
 /*
-=================================================
-# Licensed Materials - Property of MRT
-# Copyright MoonRay Technologies, LLC. 2021, 2026
-=================================================
+====================================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2021, 2026
+# 
+# Full authorship credit: MoonRay Technologies, LLC.
+====================================================
 */
 /*
 ============================================================
 First created on: Mar/05/2021
-Last modified on: Feb/01/2026
+Last modified on: Feb/09/2026
 Author(s): Senthil Nathan senthil@moonraytech.com
 
-Senthil wrote the code below on his own initiative and with his 
-original intellectual ideas and not out of any formally managed or 
-funded work by IBM. He did the major work needed for this toolkit 
-much after IBM divested its Streams product to another company around 
-May/2021 as well as after Oct/2024 when he left IBM to become an 
-independent software consultant via MRT. The core logic below and its 
-inner workings are derivatives of Senthil's work and effort. It carries
-his full ownership as it is born out of his thinking to help an
-important customer that fetched multi-year revenue for IBM even after
-IBM disowned IBM Streams and even after Senthil was no longer a
-regular emplyee of IBM. By holding full ownership of the entire code
-in this toolkit, he continues to enhance it by investing his own
-time and money. Senthil has plans to make changes to it in the future to 
-create other assets centered around the functions and features he 
-infused into this toolkit. MRT carries the full rights for all of
-the code below in terms of usage, reselling, and porting it to other
-event streaming analytics platforms and products.
+This toolkit created by Senthil is a value differentiator for key customers.
+He wrote the code below on his own initiative in his spare time and with his
+original intellectual ideas and not out of any formally managed or funded work
+by IBM or its business partners. He did the entire work needed for this toolkit
+much after IBM divested its Streams product to another company around May/2021
+as well as after Oct/2024 when he left IBM. He is now an independent software 
+consultant. His company MoonRay Technologies, LLC (MRT) has the sole authorship
+for this toolkit. To benefit from the compelling features of this asset, for any 
+enhancements as well as for creating new streaming data analytics solutions by
+using this asset, customers can use the email address shown above to reach him.
+
+As a sole author for the entire code in this toolkit, Senthil will continue to
+enhance it by investing his own time and money via MRT.
 
 This toolkit's public GitHub URL:
 https://github.com/IBMStreams/streamsx.eval_predicate
@@ -88,8 +86,7 @@ Following are three tuple examples with varying degree of complexity.
 3) tuple<rstring name,tuple<tuple<tuple<float32 latitude,float32 longitude> geo,tuple<rstring state,rstring zipCode,map<rstring,rstring> officials,list<rstring> businesses> info> location,tuple<float32 temperature,float32 humidity> weather> details,tuple<int32 population,int32 numberOfSchools,int32 numberOfHospitals> stats,int32 rank,list<int32> roadwayNumbers,map<rstring,int32> housingNumbers>
 
 Following are the examples of expressions that can be sent for evaluation.
-We support either zero or single level or multilevel (nested) parenthesis combination.
-Within a given subexpression, you must use the same logical operators.
+We support either zero or single level or multilevel (nested) parenthesis combination. Within a given subexpression, you must use the same logical operators.
 
 Zero parenthesis is used in this expression:
 a == "hi" && b contains "xyz" && g[4] > 6.7 && id % 8 == 3

@@ -1,5 +1,9 @@
 # Changes
 
+## v1.2.2
+* Feb/09/2026
+* Made more changes in the code header comments.
+
 ## v1.2.1
 * Feb/01/2026
 * Made changes in the code header comments.
